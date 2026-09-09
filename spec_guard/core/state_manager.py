@@ -37,6 +37,7 @@ __all__ = [
     "cmd_verify_gate",
     "cmd_next_task",
     "cmd_validate_spec",
+    "get_gate_mode",
     "is_v1_state",
     "_migrate_v1_to_v2",
     "get_list",
@@ -119,6 +120,63 @@ def resolve_change_dir(change_name: str) -> Path:
     if (cwd / ".state-guard").exists():
         return cwd / ".state-guard" / "changes" / change_name
     return cwd / ".spec-guard" / "changes" / change_name
+
+
+def get_gate_mode(change: str = None) -> str:
+    """Resuelve el modo de compuerta ('chat' o 'strict').
+
+    Precedencia:
+    1. Variable de entorno SPECGUARD_GATE_MODE o STATEGUARD_GATE_MODE ('chat' | 'strict')
+    2. Archivo .spec-guard/config.yaml o .state-guard/config.yaml (gate.mode o mode)
+    3. Fallback predeterminado: 'chat'
+    """
+    env_mode = os.environ.get("SPECGUARD_GATE_MODE") or os.environ.get("STATEGUARD_GATE_MODE")
+    if env_mode:
+        clean_env = env_mode.strip().lower()
+        if clean_env in ("chat", "strict"):
+            return clean_env
+
+    candidate_paths = []
+    if change:
+        c_dir = resolve_change_dir(change)
+        guard_dir = c_dir.parent.parent  # .spec-guard
+        candidate_paths.append(guard_dir / "config.yaml")
+
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        candidate_paths.append(parent / ".spec-guard" / "config.yaml")
+        candidate_paths.append(parent / ".state-guard" / "config.yaml")
+
+    for cfg_path in candidate_paths:
+        if cfg_path.exists():
+            try:
+                content = cfg_path.read_text(encoding="utf-8")
+                try:
+                    import yaml
+                    data = yaml.safe_load(content)
+                    if isinstance(data, dict):
+                        gate_cfg = data.get("gate", {})
+                        if isinstance(gate_cfg, dict) and "mode" in gate_cfg:
+                            m = str(gate_cfg["mode"]).strip().lower()
+                            if m in ("chat", "strict"):
+                                return m
+                        if "gate_mode" in data:
+                            m = str(data["gate_mode"]).strip().lower()
+                            if m in ("chat", "strict"):
+                                return m
+                except Exception:
+                    pass
+
+                m = re.search(r"^\s*gate\s*:\s*(?:\n\s+.*)*?\n\s+mode\s*:\s*['\"]?(chat|strict)['\"]?", content, re.M | re.I)
+                if m:
+                    return m.group(1).lower()
+                m2 = re.search(r"^\s*gate_mode\s*:\s*['\"]?(chat|strict)['\"]?", content, re.M | re.I)
+                if m2:
+                    return m2.group(1).lower()
+            except Exception:
+                pass
+
+    return "chat"
 
 
 class _PathFormatter:
@@ -280,16 +338,26 @@ def cmd_commit(args):
 
         # ── GATE ENFORCEMENT ────────────────────────────────────────────────
         if phase == "plan":
-            gate_token = config.get("Gate", "plan_gate_token", fallback=None)
-            if not gate_token:
-                print(
-                    "ERROR: GATE — El commit de 'plan' requiere aprobación humana explícita.\n"
-                    "       Ejecutá desde tu terminal: sg plan-approve --change "
-                    f"{args.change}\n"
-                    f"       y luego confirma con: sg plan-confirm --change {args.change}\n"
-                    "       Este comando solo funciona en una terminal humana (fuera del workspace)."
-                )
-                sys.exit(EXIT_GATE_REQUIRED)
+            gate_mode = get_gate_mode(args.change)
+            if gate_mode == "strict":
+                gate_token = config.get("Gate", "plan_gate_token", fallback=None)
+                if not gate_token:
+                    print(
+                        "ERROR: GATE — El commit de 'plan' requiere aprobación humana explícita (Modo STRICT).\n"
+                        "       Ejecutá desde tu terminal física: sg plan-approve --change "
+                        f"{args.change}\n"
+                        f"       y luego confirma con: sg plan-confirm --change {args.change} --token <TOKEN>\n"
+                        "       Este comando solo funciona en una terminal humana (fuera del workspace)."
+                    )
+                    sys.exit(EXIT_GATE_REQUIRED)
+            else:
+                # Modo chat (default): El agente ya realizó STOP mandatorio en chat.
+                # Se autoriza la promoción registrando metadatos en [Gate].
+                if not config.has_section("Gate"):
+                    config.add_section("Gate")
+                config.set("Gate", "plan_approved_at", datetime.now().isoformat())
+                config.set("Gate", "plan_approved_by", "chat")
+                config.set("Gate", "gate_mode", "chat")
         # ── FIN GATE ENFORCEMENT ────────────────────────────────────────────
 
         config.set("Graph", "current_phase", phase)

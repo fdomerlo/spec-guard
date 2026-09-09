@@ -142,10 +142,17 @@ def cmd_commit(args):
     rc, raw, err = _call_sm(["commit", "--change", args.change,
                               "--next-phase", args.next_phase])
     ok = rc == 0 and "SUCCESS" in raw
+    gate_mode = "chat"
+    try:
+        from spec_guard.core.state_manager import get_gate_mode
+        gate_mode = get_gate_mode(args.change)
+    except Exception:
+        pass
     _emit({
         "ok": ok,
         "change": args.change,
         "next_phase": args.next_phase,
+        "gate_mode": gate_mode,
         "message": raw,
         "stderr": err or None,
     }, rc)
@@ -422,7 +429,9 @@ def cmd_init(args):
     config_file = spec_dir / "config.yaml"
     if not config_file.exists():
         config_file.write_text(
-            "schema: spec-driven\n"
+            "schema: spec-driven\n\n"
+            "gate:\n"
+            "  mode: chat  # 'chat' (default, cero fricción) | 'strict' (out-of-band /dev/tty)\n\n"
             "rules:\n"
             "  change_naming: kebab-case\n"
             "  execute:\n"

@@ -53,6 +53,7 @@ def test_commit_valid_transition_with_gate(monkeypatch, tmpdir):
 
 def test_commit_plan_without_gate_raises_exit_gate_required(monkeypatch, tmpdir):
     monkeypatch.chdir(tmpdir)
+    monkeypatch.setenv("SPECGUARD_GATE_MODE", "strict")
     create_mock_state(str(tmpdir), txn_phase="plan", gate_token=None)
     args = Namespace(change="test-change", next_phase="execute")
     

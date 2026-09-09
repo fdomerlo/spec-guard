@@ -146,39 +146,60 @@ Formato de `design.md`:
 
 ### Sub-paso 2: GATE — Revisión humana obligatoria
 
-**CRÍTICO: El modelo NO puede avanzar a Sub-paso 3 por su cuenta. El gate es una barrera que solo el humano puede cruzar.**
+**CRÍTICO: El modelo NO puede avanzar a EXECUTE por su cuenta sin autorización humana explícita.**
 
-Una vez generado el draft, el modelo DEBE:
+Antes de solicitar la aprobación del gate, validar la estructura del spec ejecutando:
+```bash
+python3 -m spec_guard.cli validate-spec --change {change-name}
+```
+Si devuelve `ok: false`, el modelo NO solicita aprobación — corrige los problemas indicados en los artefactos y reintenta la validación.
 
-1. Presentar `objective.md` y `design.md` al usuario con un resumen ejecutivo
-2. Listar explícitamente las decisiones de arquitectura y las preguntas abiertas
-3. Antes de solicitar la aprobación del gate, validar la estructura del spec ejecutando:
-   ```bash
-   python3 scripts/sg.py validate-spec --change {change-name}
-   ```
-   Si devuelve `ok: false`, el modelo NO ejecuta `plan-approve` — corrige los problemas indicados en los artefactos y reintenta la validación.
-4. Ejecutar el comando de preparación del gate out-of-band:
-   ```bash
-   python3 scripts/sg.py plan-approve --change {change-name}
-   ```
-5. Emitir el siguiente bloque textual y esperar a que el humano confirme en su propia terminal:
+El comportamiento del Gate depende de `gate.mode` en `.spec-guard/config.yaml` (o variable `SPECGUARD_GATE_MODE`):
+
+#### Opción A: Modo `chat` (PREDETERMINADO — Discipline Flow, cero fricción)
+
+En modo `chat`, el gate se resuelve en la propia conversación mediante una regla de **STOP MANDATORIO**:
+
+1. El modelo tiene **PROHIBIDO** ejecutar `sg commit` o escribir código de implementación en el mismo turno en que redactó el plan.
+2. El modelo presenta un resumen ejecutivo del plan (`objective.md`, `design.md`, `tasks.md`), destaca decisiones clave y emite el siguiente mensaje de cierre de turno:
 
 ```
 ═══════════════════════════════════════════════════════════
- GATE DE REVISIÓN — PLAN listo para tu aprobación
+ PLAN listo para tu revisión (Modo CHAT)
 ═══════════════════════════════════════════════════════════
 
-Revisá objective.md y design.md. El código de confirmación fue mostrado
-en tu terminal (/dev/tty) y su hash guardado en ~/.state-guard-gate/{change-name}.token
+Revisá objective.md, design.md y tasks.md.
+No escribiré código ni comenzaré la implementación hasta que audites el plan.
 
-Para APROBAR y proceder a EXECUTE, ejecutá en tu propia terminal:
-  sg plan-confirm --change {change-name} --token <CÓDIGO>
+Para APROBAR y proceder a EXECUTE, respondé en este chat:
+  "Aprobado, avanzá con la implementación" (o simplemente /continue)
 
-Si deseás solicitar cambios o cancelar, indícalo por este chat.
+Si deseás solicitar cambios o correcciones, indícalo por este chat.
 ═══════════════════════════════════════════════════════════
 ```
 
-El modelo DEBE permanecer en estado de espera. Si el usuario no ejecuta `plan-confirm`, el estado permanece en PLAN y cualquier intento de `commit` será rechazado por el middleware con `EXIT_GATE_REQUIRED (5)`.
+3. El modelo **DETIENE SU EJECUCIÓN** inmediatamente (STOP).
+4. Cuando el usuario responde aprobando en el chat, en el siguiente turno el agente ejecuta:
+```bash
+python3 -m spec_guard.cli commit --change {change-name} --next-phase execute
+```
+El comando consolida la fase exitosamente registrando `plan_approved_by = chat`.
+
+---
+
+#### Opción B: Modo `strict` (Alta seguridad adversarial — Tokens en /dev/tty)
+
+En proyectos con `gate.mode: strict` (ej. agentes desatendidos o automáticos):
+
+1. El modelo ejecuta:
+```bash
+python3 -m spec_guard.cli plan-approve --change {change-name}
+```
+2. Emite el mensaje solicitando al usuario que corra en su terminal física:
+```bash
+sg plan-confirm --change {change-name} --token <CÓDIGO>
+```
+3. El modelo DEBE permanecer en estado de espera. Si el usuario no ejecuta `plan-confirm`, el estado permanece en PLAN y cualquier intento de `commit` será rechazado por el middleware con `EXIT_GATE_REQUIRED (5)`.
 
 ---
 

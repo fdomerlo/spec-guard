@@ -23,14 +23,19 @@ PLAN --plan-approve + plan-confirm (human /dev/tty)--> EXECUTE --tasks done + TD
    - Obey `AGENTS.md` in the project root if present; otherwise follow `~/.agents/skills/spec-guard/_shared/memory-guard.md`.
    - Never hand-edit generated or state files (`state.ini`). Always use `sg` CLI commands.
 
-2. **Phase DAG & Out-of-Band Human Approval**:
+2. **Phase DAG & Human Gate Approval**:
    - `PLAN`: Define delta specs in `.spec-guard/changes/{name}/specs/`. Define explicit `### Fuera del Alcance` (Out of Scope). Classify deliverables into sequential criteria: `CRIT-01`, `CRIT-02` (`[automated]` or `[manual]`).
-   - **Human Gate (STRICT)**: When `commit` returns exit code 5 (`EXIT_GATE_REQUIRED`), STOP immediately. Never attempt to run `sg plan-approve` or `sg plan-confirm`. Instruct the human to run:
-     ```bash
-     sg plan-approve --change <name>
-     sg plan-confirm --change <name> --token <CODE>
-     ```
-     in their interactive physical terminal (`/dev/tty`).
+   - **Gate Mode `chat` (DEFAULT)**:
+     - Mandatory STOP in chat. The agent is strictly forbidden from executing `commit` or coding in the same turn.
+     - The agent asks the human for explicit approval in the conversation.
+     - Once the human approves, `sg commit --change <name> --next-phase execute` advances the DAG to `lock_phase = execute`.
+   - **Gate Mode `strict` (Adversarial Security)**:
+     - When `commit` returns exit code 5 (`EXIT_GATE_REQUIRED`), STOP immediately. Never attempt to run `sg plan-approve` or `sg plan-confirm`. Instruct the human to run:
+       ```bash
+       sg plan-approve --change <name>
+       sg plan-confirm --change <name> --token <CODE>
+       ```
+       in their interactive physical terminal (`/dev/tty`).
 
 3. **Low-Token Execution & Session Checkpoint (`SESSION.md`)**:
    - During `EXECUTE`, operate with the lightweight cursor `SESSION.md` (~250 tokens) at repository root. Do not reload massive specification files in every turn.

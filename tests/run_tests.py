@@ -61,6 +61,13 @@ def _create_mini_pytest():
             self._actions.append((self._restore_env, (name, orig)))
             os.environ[name] = str(value)
 
+        def delenv(self, name, raising=True):
+            orig = os.environ.get(name)
+            if orig is None and raising:
+                raise KeyError(name)
+            self._actions.append((self._restore_env, (name, orig)))
+            os.environ.pop(name, None)
+
         def _restore_env(self, name, orig):
             if orig is None:
                 os.environ.pop(name, None)

@@ -99,11 +99,22 @@ Objective:      .state-guard/changes/{change-name}/objective.md
 Specs delta:    .state-guard/changes/{change-name}/specs/
 Diseño:         .state-guard/changes/{change-name}/design.md
 Tareas:         .state-guard/changes/{change-name}/tasks.md
-Configuración:  .state-guard/config.yaml
+Configuración:  .state-guard/config.yaml (o .spec-guard/config.yaml)
 Specs actuales: .state-guard/specs/{dominio}/spec.md
 Estado (DAG+sesión): .state-guard/changes/{change-name}/state.ini (vía `state_manager.py status`)
 
 ```
+
+### Configuración de Gate en `config.yaml`
+
+```yaml
+schema: spec-driven
+
+gate:
+  mode: chat  # Opciones: "chat" (predeterminado, STOP en chat) | "strict" (tokens fuera de banda en /dev/tty)
+```
+
+En modo `chat` (default), el gate de la fase PLAN se aprueba directamente tras la confirmación del usuario en la conversación (sin tokens en terminal física). En modo `strict`, `commit` exige token criptográfico out-of-band generado con `sg plan-approve`.
 
 ## Reglas de Escritura
 
