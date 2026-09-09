@@ -3,8 +3,7 @@ __pycache__/
 .pytest_cache/
 .spec-guard/*
 !.spec-guard/hooks.yaml.example
-.state-guard/*
-!.state-guard/hooks.yaml.example
+.state-guard/
 .test-gate/
 *.egg-info/
 dist/
