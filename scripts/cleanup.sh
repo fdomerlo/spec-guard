@@ -12,7 +12,7 @@ MARKERS=(
 echo "Iniciando limpieza de SpecGuard..."
 
 # 1. Eliminar directorios de skills
-for d in "$SPEC_GUARD_DIR" "$STATE_GUARD_DIR"; do
+for d in "$SPEC_GUARD_DIR" "$STATE_GUARD_DIR" "$HOME/.gemini/config/skills/spec-guard"; do
     if [ -d "$d" ]; then
         rm -rf "$d"
         echo "✓ Directorio eliminado: $d"
@@ -20,7 +20,7 @@ for d in "$SPEC_GUARD_DIR" "$STATE_GUARD_DIR"; do
 done
 
 # 2. Eliminar symlinks en ~/.local/bin
-rm -f "$HOME/.local/bin/sg" "$HOME/.local/bin/spec-guard" 2>/dev/null || true
+rm -f "$HOME/.local/bin/sg" "$HOME/.local/bin/spec-guard" "$HOME/.local/bin/sg-verify-crit" "$HOME/.local/bin/sg-init" 2>/dev/null || true
 
 # 3. Limpiar los archivos de configuración
 CONFIG_FILES=(

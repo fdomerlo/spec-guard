@@ -67,6 +67,15 @@ for skill_dir in "$SOURCE_SKILLS_DIR"/*/; do
 done
 echo "  ✓ $count skills instaladas en $TARGET_DIR"
 
+# 1b. Instalación de Skill nativa en Antigravity (~/.gemini/config/skills/spec-guard/)
+echo "→ Instalando Skill nativa en Antigravity (~/.gemini/config/skills/spec-guard)..."
+GEMINI_SKILLS_DIR="$HOME/.gemini/config/skills/spec-guard"
+mkdir -p "$GEMINI_SKILLS_DIR"
+if [[ -f "$SOURCE_SKILLS_DIR/spec-guard/SKILL.md" ]]; then
+    cp "$SOURCE_SKILLS_DIR/spec-guard/SKILL.md" "$GEMINI_SKILLS_DIR/SKILL.md"
+    echo "  ✓ Skill spec-guard registrada en Antigravity ($GEMINI_SKILLS_DIR/SKILL.md)"
+fi
+
 # Enlaces simbólicos en ~/.local/bin si existe o se crea
 mkdir -p "$HOME/.local/bin"
 ln -sf "$TARGET_DIR/bin/sg.py" "$HOME/.local/bin/sg"
