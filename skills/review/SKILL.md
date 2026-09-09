@@ -28,7 +28,9 @@ Del orquestador:
 
 ## Referencia
 
-Consultar `skills/_shared/convention.md` para el schema de `state.ini`.
+No cargues `skills/_shared/convention.md` por adelantado. Abrilo solo si
+necesitás verificar un campo específico del schema de `state.ini` que no
+te quede claro por el propio comportamiento del CLI.
 
 ## Qué Hacer
 
