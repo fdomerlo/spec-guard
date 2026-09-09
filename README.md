@@ -9,7 +9,10 @@ El flujo de trabajo se estructura en un **DAG estricto de 3 fases con gate human
 
 ## Características Principales
 
-- 📐 **SDD Riguroso**: Las especificaciones (`objective.md`, `design.md`, `tasks.md`) son contratos inmutables. El código solo se escribe para cumplir la especificación aprobada.
+- 📐 **SDD Riguroso**: Las especificaciones (`objective.md`, `design.md`, `tasks.md`) son contratos inmutables. El código solo se escribe para cumplir la especificación aprobada con delimitación estricta de alcance (**Fuera del Alcance**).
+- 🧪 **Trazabilidad Determinista de Criterios (`CRIT-XX`)**: Comando `sg verify-crit` que audita automáticamente que cada criterio de aceptación automatizable cuente con tests correspondientes en el código.
+- ⚡ **Cursor de Sesión de Bajo Consumo (`SESSION.md`)**: Registro volátil y ligero (~250 tokens) en la raíz del proyecto para ejecución eficiente, con validación de ancestría Git (`merge-base`) para prevenir desincronizaciones tras compactaciones de contexto.
+- 📜 **Estándar Universal `AGENTS.md`**: Bootstrap seguro y no destructivo del contrato SDD en `AGENTS.md` (compatible con Claude Code, Gemini y OpenCode).
 - 🔐 **Gate Humano Fuera de Banda**: El agente **no puede auto-aprobarse**. Los tokens de validación se emiten exclusivamente a la terminal interactiva del desarrollador (`/dev/tty`), protegidos por SHA-256 y un mecanismo de bloqueo automático tras 3 intentos fallidos.
 - 💾 **ACID State Machine**: Motor de estado transaccional (`BEGIN` / `COMMIT` / `ROLLBACK` / `CHECKPOINT`) con locks POSIX y detección de locks huérfanos/estériles.
 - 🔄 **Compatibilidad Dual**: Funciona nativamente con directorios `.spec-guard/` y mantiene compatibilidad total con proyectos preexistentes basados en `.state-guard/`.
@@ -146,6 +149,9 @@ sg hotfix-confirm --change fix-login --token <CÓDIGO>
 | `sg hotfix-init --change <c> --reason <r>` | Inicia solicitud de bypass para hotfix | **Solo Humano** |
 | `sg hotfix-confirm --change <c> --token <t>` | Valida y desbloquea el bypass | **Solo Humano** |
 | `sg validate-spec --change <c>` | Valida integridad estructural de los documentos | Agente o Humano |
+| `sg verify-crit --change <c>` | Valida determinísticamente trazabilidad 1:1 de `CRIT-XX` en tests | Agente o Humano |
+| `sg session-checkpoint --change <c> [--action <a>]` | Genera o actualiza atómicamente el cursor `SESSION.md` | Agente o Humano |
+| `sg install-hooks` | Instala hooks de git (ej. post-commit) en el repositorio | Humano |
 | `sg hooks-start` / `status` / `stop` | Gestiona el daemon de observación | Humano |
 
 ---

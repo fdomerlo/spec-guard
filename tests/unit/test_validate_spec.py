@@ -27,6 +27,8 @@ Resolver problema de prueba
 ## Alcance
 ### Dentro del Alcance
 - Entregable 1
+### Fuera del Alcance
+- Módulos externos no relacionados
 ## Criterios de Éxito
 - [ ] Test pasa
 ## Preguntas Abiertas
@@ -136,3 +138,20 @@ def test_validate_spec_unresolved_placeholder(monkeypatch, tmpdir, capsys):
     assert res["ok"] is False
     issues = res["issues"]
     assert any(i["issue"] == "UNRESOLVED_PLACEHOLDER" and i["file"] == "objective.md" for i in issues)
+
+
+def test_validate_spec_missing_out_of_scope(monkeypatch, tmpdir, capsys):
+    monkeypatch.chdir(tmpdir)
+    objective_no_oos = VALID_OBJECTIVE.replace("### Fuera del Alcance\n- Módulos externos no relacionados\n", "")
+    setup_change(str(tmpdir), objective_no_oos, VALID_DESIGN)
+
+    args = Namespace(change="test-change")
+    with pytest.raises(SystemExit) as exc_info:
+        state_manager.cmd_validate_spec(args)
+    assert exc_info.value.code == state_manager.EXIT_VALIDATION
+
+    captured = capsys.readouterr()
+    res = json.loads(captured.out)
+    assert res["ok"] is False
+    issues = res["issues"]
+    assert any(i["issue"] == "MISSING_OUT_OF_SCOPE" and i["file"] == "objective.md" for i in issues)

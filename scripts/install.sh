@@ -28,12 +28,16 @@ LEGACY_MARKER_END="<!-- state-guard:end -->"
 echo "Iniciando instalación universal de SpecGuard..."
 
 # 1. Directorios unificados y copia de código, skills, fases y binarios
-mkdir -p "$TARGET_DIR/bin" "$TARGET_DIR/_shared" "$TARGET_DIR/phases/_shared"
+mkdir -p "$TARGET_DIR/bin" "$TARGET_DIR/_shared" "$TARGET_DIR/phases/_shared" "$TARGET_DIR/templates"
 
 echo "→ Copiando paquete canónico spec_guard y binarios..."
 cp -r "$REPO_DIR/spec_guard" "$TARGET_DIR/"
 cp "$SCRIPT_DIR"/*.py "$TARGET_DIR/bin/" 2>/dev/null || true
-chmod +x "$TARGET_DIR/bin"/*.py
+cp "$SCRIPT_DIR"/*.sh "$TARGET_DIR/bin/" 2>/dev/null || true
+chmod +x "$TARGET_DIR/bin"/*.py "$TARGET_DIR/bin"/*.sh 2>/dev/null || true
+
+echo "→ Copiando plantillas..."
+cp -r "$REPO_DIR/spec_guard/templates/"* "$TARGET_DIR/templates/" 2>/dev/null || true
 
 echo "→ Copiando contratos y skills..."
 cp -r "$SOURCE_SKILLS_DIR/_shared/"* "$TARGET_DIR/_shared/"
@@ -67,17 +71,19 @@ echo "  ✓ $count skills instaladas en $TARGET_DIR"
 mkdir -p "$HOME/.local/bin"
 ln -sf "$TARGET_DIR/bin/sg.py" "$HOME/.local/bin/sg"
 ln -sf "$TARGET_DIR/bin/sg.py" "$HOME/.local/bin/spec-guard"
-echo "  ✓ Symlinks creados en ~/.local/bin/sg y ~/.local/bin/spec-guard"
+ln -sf "$TARGET_DIR/bin/verify-crit.sh" "$HOME/.local/bin/sg-verify-crit"
+ln -sf "$TARGET_DIR/bin/init.sh" "$HOME/.local/bin/sg-init"
+echo "  ✓ Symlinks creados en ~/.local/bin/ (sg, spec-guard, sg-verify-crit, sg-init)"
 
-# 2. Texto de Bootstrap (Directiva Única)
+# 2. Texto de Bootstrap (Directiva Única con primacía de AGENTS.md)
 BOOTSTRAP_TEXT=$(cat <<EOF
 ## ACTIVE SPECIFICATION-DRIVEN DEVELOPMENT (SDD) CONTRACT: SpecGuard
 MANDATORY BOOTSTRAP — execute before responding to anything:
-1. Call read_file on $TARGET_DIR/_shared/memory-guard.md.
+1. Obey AGENTS.md in the project root if present; otherwise call read_file on $TARGET_DIR/_shared/memory-guard.md.
 2. Follow every instruction in that file as your absolute SDD state contract.
 3. SpecGuard CLI binary: $TARGET_DIR/bin/sg.py (or 'sg' in PATH)
    Subcomandos operativos (agente): begin | commit | rollback | checkpoint | status
-                                     | next-task | verify-gate | mark-task
+                                     | next-task | verify-gate | mark-task | verify-crit | session-checkpoint
    Subcomandos EXCLUSIVOS DE HUMANO (el agente nunca los ejecuta):
                                      plan-approve | plan-confirm | hotfix-init | hotfix-confirm
    Si 'commit' devuelve EXIT_GATE_REQUIRED (5): DETENÉ el ciclo y pedile
@@ -210,5 +216,11 @@ done
 echo "  ✓ $cmd_count slash commands generados al vuelo."
 
 echo "→ Tip: Podés ejecutar 'sg install-hooks' en tu repositorio para activar hooks de git (ej. post-commit)."
+
+# 6. Bootstrap del repositorio actual si estamos en un repo git
+if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "→ Inicializando AGENTS.md y CLAUDE.md en el repositorio..."
+    "$SCRIPT_DIR/init.sh" --target-dir "$REPO_DIR" || true
+fi
 
 echo -e "\nDone! SpecGuard v3.0.0 instalado exitosamente."

@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import signal
 import subprocess
@@ -198,6 +199,211 @@ def cmd_verify_gate(args):
 def cmd_validate_spec(args):
     rc, obj, _ = _call_sm(["validate-spec", "--change", args.change], check_json=True)
     _emit({"ok": rc == 0, **obj}, rc)
+
+
+def _search_pattern_in_tests(repo_root: Path, pattern: str) -> list[str]:
+    """Busca una etiqueta de criterio (ej. CRIT-01 o CRIT_01) en directorios de test/código."""
+    patterns = {pattern.lower(), pattern.lower().replace("-", "_"), pattern.lower().replace("_", "-")}
+    regex_pattern = "|".join(re.escape(p) for p in patterns)
+
+    if (repo_root / ".git").exists():
+        try:
+            cmd = ["git", "grep", "--untracked", "-in", "-E", regex_pattern, "--", "tests/", "test/", "spec/", "src/"]
+            res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+            if res.returncode == 0 and res.stdout.strip():
+                return [l.strip() for l in res.stdout.strip().splitlines() if l.strip()]
+        except Exception:
+            pass
+
+    matches = []
+    for dname in ["tests", "test", "spec", "src"]:
+        target_dir = repo_root / dname
+        if not target_dir.exists():
+            continue
+        for fpath in target_dir.rglob("*"):
+            if fpath.is_file() and not fpath.name.startswith("."):
+                try:
+                    lines = fpath.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    for idx, line in enumerate(lines, start=1):
+                        line_lower = line.lower()
+                        if any(p in line_lower for p in patterns):
+                            rel = fpath.relative_to(repo_root)
+                            matches.append(f"{rel}:{idx}:{line.strip()}")
+                except Exception:
+                    pass
+    return matches
+
+
+def cmd_verify_crit(args):
+    """
+    Audita deterministamente la trazabilidad 1:1 de criterios CRIT-XX en tests.
+    Extrae criterios de tasks.md, design.md y objective.md, y verifica que para cada
+    criterio automatizado exista una prueba en el código que contenga su identificador.
+    """
+    import re
+    change = args.change
+    guard_dir = _find_guard_dir(REPO_ROOT)
+    change_dir = guard_dir / "changes" / change
+    if not change_dir.exists():
+        _emit({"ok": False, "change": change, "message": f"El change '{change}' no existe."}, 1)
+
+    crit_pattern = re.compile(r'-\s*\[([ xX])\]\s*(CRIT-[0-9]+)[:\s]*(.*)')
+    criteria_map = {}
+
+    for fname in ["tasks.md", "design.md", "objective.md"]:
+        fpath = change_dir / fname
+        if fpath.exists():
+            content = fpath.read_text(encoding="utf-8")
+            for line in content.splitlines():
+                m = crit_pattern.search(line)
+                if m:
+                    crit_id = m.group(2)
+                    desc = m.group(3).strip()
+                    is_manual = "(manual)" in desc.lower()
+                    if crit_id not in criteria_map:
+                        criteria_map[crit_id] = {
+                            "id": crit_id,
+                            "checked": m.group(1).lower() == "x",
+                            "description": desc,
+                            "type": "manual" if is_manual else "automated",
+                            "source_file": fname,
+                        }
+
+    if not criteria_map:
+        _emit({
+            "ok": True,
+            "change": change,
+            "criteria": [],
+            "failures": 0,
+            "message": f"No se encontraron criterios CRIT-XX en las especificaciones de '{change}'."
+        }, 0)
+
+    failures = 0
+    results = []
+
+    for crit_id in sorted(criteria_map.keys()):
+        item = criteria_map[crit_id]
+        if item["type"] == "manual":
+            item["status"] = "Pendiente de verificación humana"
+            item["location"] = None
+        else:
+            code_matches = [
+                l for l in _search_pattern_in_tests(REPO_ROOT, crit_id)
+                if not any(f"changes/{change}/" in l or "SESSION.md" in l or "PLAN-" in l for _ in [0])
+            ]
+            if code_matches:
+                first = code_matches[0]
+                loc = first.split(":", 2)[:2]
+                location_str = ":".join(loc)
+                item["status"] = f"Localizado en {location_str}"
+                item["location"] = location_str
+            else:
+                item["status"] = f"FALLO: No existe test asociado con la etiqueta {crit_id}"
+                item["location"] = None
+                failures += 1
+        results.append(item)
+
+    ok = failures == 0
+    message = (
+        f"Trazabilidad completa: {len(results)} criterios auditados, {failures} fallas."
+        if ok else
+        f"FALLÓ la verificación de trazabilidad: {failures} criterio(s) automatizados sin test demostrable."
+    )
+    _emit({
+        "ok": ok,
+        "change": change,
+        "failures": failures,
+        "criteria": results,
+        "message": message,
+    }, 0 if ok else 2)
+
+
+def cmd_session_checkpoint(args):
+    """
+    Actualiza o genera el cursor de sesión liviano (~250 tokens) SESSION.md.
+    """
+    change = args.change
+    guard_dir = _find_guard_dir(REPO_ROOT)
+    change_dir = guard_dir / "changes" / change
+    if not change_dir.exists():
+        _emit({"ok": False, "change": change, "message": f"El change '{change}' no existe."}, 1)
+
+    state_file = change_dir / "state.ini"
+    phase = "execute"
+    base_commit = "HEAD"
+    if state_file.exists():
+        cfg = configparser.ConfigParser()
+        cfg.read(state_file, encoding="utf-8")
+        phase = cfg.get("Graph", "lock_phase", fallback="execute")
+        base_commit = cfg.get("Transaction", "base_commit", fallback="")
+
+    if not base_commit:
+        try:
+            res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), capture_output=True, text=True)
+            if res.returncode == 0:
+                base_commit = res.stdout.strip()
+        except Exception:
+            base_commit = "unknown"
+
+    diverged = False
+    if base_commit and base_commit != "unknown":
+        try:
+            res = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", base_commit, "HEAD"],
+                cwd=str(REPO_ROOT), capture_output=True, text=True
+            )
+            if res.returncode != 0:
+                diverged = True
+        except Exception:
+            pass
+
+    now_iso = datetime.now().isoformat()
+    action = args.action or "Continuar implementación de tareas pendientes"
+    completed = args.completed or "- Hito inicial registrado"
+    working_state = args.working_state or "- Ejecutando fase actual"
+    decisions = args.decisions or "- Ninguna pendiente"
+
+    content = (
+        f"# Session Checkpoint\n\n"
+        f"- **Plan:** {change}\n"
+        f"- **Phase:** {phase}\n"
+        f"- **Status:** in_progress\n"
+        f"- **Updated:** {now_iso}\n"
+        f"- **Base commit:** {base_commit}\n\n"
+        f"## Completed in this session\n"
+        f"{completed}\n\n"
+        f"## Current working state\n"
+        f"{working_state}\n\n"
+        f"## Next action\n"
+        f"{action}\n\n"
+        f"## Open decisions\n"
+        f"{decisions}\n\n"
+        f"## Verification\n"
+        f"- Tests: {'pending' if not args.tests else args.tests}\n"
+        f"- Divergence check: {'ALERTA: Git divergió del commit base' if diverged else 'OK (ancestro válido)'}\n"
+        f"- Human review: pending\n"
+    )
+
+    session_root = REPO_ROOT / "SESSION.md"
+    tmp_root = REPO_ROOT / "SESSION.md.tmp"
+    session_change = change_dir / "SESSION.md"
+
+    try:
+        tmp_root.write_text(content, encoding="utf-8")
+        tmp_root.replace(session_root)
+        session_change.write_text(content, encoding="utf-8")
+    except Exception as e:
+        _emit({"ok": False, "error": str(e), "message": "No se pudo escribir SESSION.md"}, 1)
+
+    _emit({
+        "ok": True,
+        "change": change,
+        "phase": phase,
+        "base_commit": base_commit,
+        "diverged": diverged,
+        "session_file": str(session_root),
+        "message": "SESSION.md actualizado exitosamente.",
+    })
 
 
 def cmd_migrate(args):
@@ -656,32 +862,22 @@ def build_parser():
     # mark-task
     p = sub.add_parser("mark-task", help="Marca una tarea como completada por ID (JSON)")
     p.add_argument("--change", required=True)
-    p.add_argument("--task-id", required=True, dest="task_id")
-
-    # next-task
-    p = sub.add_parser("next-task", help="Próxima tarea pendiente (JSON)")
-    p.add_argument("--change", required=True)
-
-    # verify-gate
-    p = sub.add_parser("verify-gate",
-                       help="Verifica si una fase está autorizada por el DAG (JSON)")
-    p.add_argument("--change", required=True)
-    p.add_argument("--phase", required=True)
-
-    # migrate
-    p = sub.add_parser("migrate", help="Migra state.ini v1 (8 fases) a v2 (3 fases)")
-    p.add_argument("--change", required=True)
-
-    # init-change
-    p = sub.add_parser("init-change", help="Inicializa un nuevo change")
-    p.add_argument("--change", required=True)
-
-    # list-changes
-    sub.add_parser("list-changes", help="Lista todos los changes activos")
-
-    # validate-spec
+      # validate-spec
     p = sub.add_parser("validate-spec", help="Valida la estructura de objective.md y design.md")
     p.add_argument("--change", required=True)
+
+    # verify-crit
+    p = sub.add_parser("verify-crit", help="Audita deterministamente la trazabilidad 1:1 de criterios CRIT-XX en tests")
+    p.add_argument("--change", required=True)
+
+    # session-checkpoint
+    p = sub.add_parser("session-checkpoint", help="Actualiza o inicializa el cursor de sesión liviano SESSION.md")
+    p.add_argument("--change", required=True)
+    p.add_argument("--action", default=None, help="Próxima acción inmediata atómica")
+    p.add_argument("--completed", default=None, help="Bullets de hitos completados")
+    p.add_argument("--working-state", default=None, help="Estado actual de trabajo")
+    p.add_argument("--decisions", default=None, help="Decisiones abiertas")
+    p.add_argument("--tests", default=None, help="Estado de la suite de tests")
 
     # install-hooks
     p = sub.add_parser("install-hooks", help="Instala git hooks de SpecGuard")
@@ -715,7 +911,7 @@ def build_parser():
     )
     p.add_argument("--change", required=True)
     p.add_argument("--reason", required=True,
-                   help="Razón del bypass (ej: 'regresión crítica en prod')")
+                    help="Razón del bypass (ej: 'regresión crítica en prod')")
 
     # hotfix-confirm (paso 2: consume token e inicializa)
     p = sub.add_parser(
@@ -744,6 +940,8 @@ def main():
         "verify-gate": cmd_verify_gate,
         "migrate": cmd_migrate,
         "validate-spec": cmd_validate_spec,
+        "verify-crit": cmd_verify_crit,
+        "session-checkpoint": cmd_session_checkpoint,
         "init-change": cmd_init_change,
         "list-changes": cmd_list_changes,
         "install-hooks": cmd_install_hooks,

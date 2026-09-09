@@ -162,6 +162,16 @@ def run_unit_tests():
                 passed += 1
                 sys.stdout.write(".")
                 sys.stdout.flush()
+            except SystemExit as se:
+                if se.code == 0 or se.code is None:
+                    passed += 1
+                    sys.stdout.write(".")
+                    sys.stdout.flush()
+                else:
+                    failed += 1
+                    errors.append((f"{test_file.name}::{name}", f"Unexpected SystemExit({se.code})"))
+                    sys.stdout.write("F")
+                    sys.stdout.flush()
             except Exception as ex:
                 import traceback
                 failed += 1

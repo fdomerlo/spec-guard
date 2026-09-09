@@ -13,7 +13,8 @@ os.environ["SPECGUARD_GATE_DIR"] = os.path.join(REPO_ROOT, ".test-gate")
 os.environ["STATEGUARD_GATE_DIR"] = os.path.join(REPO_ROOT, ".test-gate")
 SCRIPT = os.path.join(REPO_ROOT, "scripts", "state_manager.py")
 SG_SCRIPT = os.path.join(REPO_ROOT, "scripts", "sg.py")
-STATE_PATH = os.path.join(REPO_ROOT, f".state-guard/changes/{CHANGE}/state.ini")
+SG_DIR_NAME = ".spec-guard" if os.path.exists(os.path.join(REPO_ROOT, ".spec-guard")) else ".state-guard"
+STATE_PATH = os.path.join(REPO_ROOT, f"{SG_DIR_NAME}/changes/{CHANGE}/state.ini")
 
 
 import pty
@@ -65,23 +66,27 @@ def inject_gate_token():
 
 
 def reset_state():
-    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
     gate_dir = os.environ.get("SPECGUARD_GATE_DIR")
     if gate_dir and os.path.exists(gate_dir):
         import shutil
         shutil.rmtree(gate_dir, ignore_errors=True)
-    with open(STATE_PATH, "w") as f:
-        f.write(
-            "[Metadata]\nlast_updated = 2026-07-02T10:00:00\nschema_version = 2\n\n"
-            "[Transaction]\ntxn_status = idle\ntxn_phase = None\ntxn_started_at = None\n\n"
-            "[Graph]\ncurrent_phase = none\nlock_phase = plan\n"
-            "completed_phases = \n"
-            "pending_phases = plan, execute, verify\n"
-        )
-    for f_name in [".lock", ".write-lock"]:
-        p = os.path.join(REPO_ROOT, f".state-guard/changes/{CHANGE}/{f_name}")
-        if os.path.exists(p):
-            os.remove(p)
+    for guard in [".spec-guard", ".state-guard"]:
+        guard_dir = os.path.join(REPO_ROOT, guard)
+        if os.path.exists(guard_dir) or guard == SG_DIR_NAME:
+            c_dir = os.path.join(guard_dir, "changes", CHANGE)
+            os.makedirs(c_dir, exist_ok=True)
+            with open(os.path.join(c_dir, "state.ini"), "w") as f:
+                f.write(
+                    "[Metadata]\nlast_updated = 2026-07-02T10:00:00\nschema_version = 2\n\n"
+                    "[Transaction]\ntxn_status = idle\ntxn_phase = None\ntxn_started_at = None\n\n"
+                    "[Graph]\ncurrent_phase = none\nlock_phase = plan\n"
+                    "completed_phases = \n"
+                    "pending_phases = plan, execute, verify\n"
+                )
+            for f_name in [".lock", ".write-lock"]:
+                p = os.path.join(c_dir, f_name)
+                if os.path.exists(p):
+                    os.remove(p)
 
 
 def extract_last_json(raw):
@@ -265,10 +270,11 @@ print("=" * 60)
 print("TEST 5: sg hotfix-init + sg hotfix-confirm (hash verification)")
 print("=" * 60)
 hotfix_change = "mi-hotfix"
-hotfix_dir = os.path.join(REPO_ROOT, ".state-guard", "changes", hotfix_change)
 import shutil
-if os.path.exists(hotfix_dir):
-    shutil.rmtree(hotfix_dir)
+for guard in [".spec-guard", ".state-guard"]:
+    hotfix_dir = os.path.join(REPO_ROOT, guard, "changes", hotfix_change)
+    if os.path.exists(hotfix_dir):
+        shutil.rmtree(hotfix_dir)
 
 # Paso 1: hotfix-init (prepara token fuera del workspace)
 res_hinit = run_with_pty(

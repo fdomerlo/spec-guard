@@ -3,7 +3,7 @@
 ## Estructura de Directorios
 
 ```text
-.state-guard/
+.spec-guard/ (o .state-guard/)
 ├── config.yaml              ← Configuración del agente específica del proyecto
 ├── specs/                   ← Fuente de verdad (specs actuales del sistema)
 │   └── {dominio}/
@@ -11,35 +11,38 @@
 └── changes/                 ← Cambios activos
     ├── archive/             ← Cambios completados (YYYY-MM-DD-{change-name}/)
     └── {change-name}/       ← Carpeta de cambio activo
-        ├── state.ini        ← Estado del DAG + sesión (manejado por el middleware Python)
-        ├── .lock            ← Lock de fase (manejado por el middleware, no tocar a mano)
-        ├── .write-lock      ← Mutex de escritura de archivo, vida corta (idem)
-        ├── objective.md     ← de plan (propósito y alcance)
+        ├── state.ini        ← Estado del DAG + sesión (manejado por middleware)
+        ├── .lock            ← Lock de fase (manejado por middleware)
+        ├── .write-lock      ← Mutex de escritura de archivo (manejado por middleware)
+        ├── objective.md     ← de plan (propósito, alcance y sección Out of scope)
         ├── specs/           ← de plan (specs delta)
         │   └── {dominio}/
         │       └── spec.md
         ├── design.md        ← de plan (diseño técnico)
-        ├── tasks.md         ← de execute (creado y actualizado)
+        ├── tasks.md         ← de execute (desglose de tareas con CRIT-XX)
+        ├── SESSION.md       ← de execute (cursor liviano ~250 tokens para bajo consumo)
         └── verify-report.md ← de verify
 
 ```
 
-`.lock` y `.write-lock` son artefactos internos del middleware — nunca se referencian desde una skill ni se leen directamente. Se muestran acá solo para que no se los confunda con artefactos de contenido si aparecen al listar el directorio.
+`.lock` y `.write-lock` son artefactos internos del middleware — nunca se referencian desde una skill ni se leen directamente.
+`SESSION.md` es el cursor de ejecución de ultra-bajo consumo de tokens (~250 tokens). Se escribe atómicamente y se ancla también en la raíz del repo durante la fase `execute` para que las iteraciones de desarrollo no tengan que releer el macro-contrato completo.
 
 ## Rutas de Artefactos por Skill
 
 | Skill | Crea / Lee | Ruta |
 | --- | --- | --- |
-| orquestador | Lee | `.state-guard/changes/{change-name}/state.ini` |
-| hotfix | Crea | `.state-guard/changes/{change-name}/state.ini` (Inicialización Bypass) |
+| orquestador | Lee | `.spec-guard/changes/{change-name}/state.ini` |
+| hotfix | Crea | `.spec-guard/changes/{change-name}/state.ini` (Inicialización Bypass) |
 | init | Crea | directorios base y `config.yaml` |
-| plan | Crea | `.state-guard/changes/{change-name}/objective.md`, `design.md` y `specs/{dominio}/spec.md` |
-| execute | Crea | `.state-guard/changes/{change-name}/tasks.md` |
-| execute | Actualiza | `.state-guard/changes/{change-name}/tasks.md` (marca `[x]`) |
-| verify | Crea | `.state-guard/changes/{change-name}/verify-report.md` |
-| verify (Paso 9) | Mueve | `.state-guard/changes/{change-name}/` → `archive/YYYY-MM-DD-{change-name}/` |
-| checkpoint | Actualiza | `.state-guard/changes/{change-name}/state.ini` → sección `[Session]` (vía middleware) |
-| continue | Lee | `.state-guard/changes/{change-name}/state.ini` (vía `sg status`, nunca directo) |
+| plan | Crea | `objective.md` (con Out of scope), `design.md` y `specs/{dominio}/spec.md` |
+| execute | Crea | `tasks.md` (con `CRIT-XX`) y `SESSION.md` (cursor liviano) |
+| execute | Actualiza | `SESSION.md` (estado inmediato y Next action) y `tasks.md` (marca `[x]`) |
+| verify | Audita | `sg verify-crit` (trazabilidad 1:1 de `CRIT-XX` contra tests) |
+| verify | Crea | `.spec-guard/changes/{change-name}/verify-report.md` |
+| verify (Paso 9) | Mueve | `.spec-guard/changes/{change-name}/` → `archive/YYYY-MM-DD-{change-name}/` |
+| checkpoint | Actualiza | `.spec-guard/changes/{change-name}/state.ini` y `SESSION.md` (vía `sg checkpoint` / `session-checkpoint`) |
+| continue | Lee | `SESSION.md` (durante execute) y `state.ini` (vía `sg status`) |
 
 ## Schema de `state.ini` (Motor ACID)
 

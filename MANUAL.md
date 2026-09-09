@@ -199,7 +199,10 @@ El comando `sg install-hooks` instala un hook `post-commit` en el repositorio Gi
 
 ### Subcomandos Principales de `sg.py`
 
-- **Validación de Especificaciones**: `sg validate-spec --change <nombre>` valida estructuralmente `objective.md` y `design.md` comprobando que no contengan preguntas abiertas bloqueantes (`[!]`), placeholders ni secciones faltantes antes de habilitar el gate humano.
+- **Validación de Especificaciones**: `sg validate-spec --change <nombre>` valida estructuralmente `objective.md` y `design.md` comprobando que no contengan preguntas abiertas bloqueantes (`[!]`), placeholders ni secciones faltantes (incluyendo la sección obligatoria `### Fuera del Alcance` / `Out of Scope`) antes de habilitar el gate humano.
+- **Trazabilidad de Criterios (CRIT-XX)**: `sg verify-crit --change <nombre>` (o `./scripts/verify-crit.sh <nombre>`) extrae determinísticamente los criterios `CRIT-XX` de `tasks.md`, `design.md` u `objective.md`. Comprueba si están marcados como `[automated]` o `[manual]`. Para cada criterio automatizable, audita la base de pruebas (`tests/`, `test/`, `spec/`, `src/`) verificando que exista un test con dicho identificador (`CRIT-01` o `test_crit_01`). Retorna exit code 0 si todos los criterios automatizables tienen tests, o código 2 (bloqueante) si hay criterios huérfanos.
+- **Cursor de Sesión Volátil (`SESSION.md`)**: `sg session-checkpoint --change <nombre> [--action <acción>]` genera o actualiza atómicamente el archivo cursor `SESSION.md` en la raíz del repositorio. Registra el `Base commit` capturado en `begin`, la fase activa, el estado de trabajo y la próxima acción recomendada, comprobando la validez de ancestría Git (`git merge-base --is-ancestor <base-commit> HEAD`) para prevenir desincronizaciones tras compactaciones de contexto sin consumir miles de tokens.
+- **Bootstrap Universal con `AGENTS.md`**: `scripts/init.sh` (o `sg-init`) inicializa un repositorio con el contrato SDD en `AGENTS.md` mediante bloques delimitados `<!-- BEGIN SPECGUARD -->` ... `<!-- END SPECGUARD -->`, preservando cualquier directiva preexistente del equipo, y enlaza `CLAUDE.md` a `@AGENTS.md`.
 - **Gestión de Agent Hooks**: `sg hooks-start`, `sg hooks-stop` y `sg hooks-status` permiten iniciar, detener y verificar el estado del daemon de observabilidad de filesystem.
 
 ### Tabla de Códigos de Salida (Exit Codes)

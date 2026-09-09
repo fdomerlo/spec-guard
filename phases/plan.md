@@ -37,10 +37,15 @@ Lee los manifiestos encontrados para identificar stack, framework y herramientas
 
 #### 1.3 Propuesta
 
-- Intención clara: qué problema resuelve y por qué
-- Alcance: dentro/fuera
-- Criterios de éxito (checkboxes medibles)
-- Preguntas abiertas (bloqueantes marcadas con `[!]`)
+- Intención clara: qué problema resuelve y por qué.
+- **Alcance y Delimitación:**
+  - `Dentro del Alcance`: Entregables y comportamientos que sí cubre este cambio.
+  - `Fuera del Alcance (Out of Scope)`: **OBLIGATORIO.** Declarar explícitamente qué queda deliberadamente fuera de este cambio para prevenir *scope creep* y refactorizaciones no autorizadas.
+- **Criterios de Aceptación (`CRIT-XX`):**
+  - **OBLIGATORIO.** Asignar identificadores secuenciales únicos (`- [ ] CRIT-01: ...`, `- [ ] CRIT-02: ...`).
+  - Todo criterio automatizado debe ser testeable y mapearse 1:1 a un caso de prueba (`test('CRIT-01: ...')` o `def test_crit_01_...()`).
+  - Criterios que solo un humano puede validar deben marcarse explícitamente: `- [ ] CRIT-03: (manual) ...`.
+- Preguntas abiertas (bloqueantes marcadas con `[!]`).
 
 #### 1.4 Especificación (si el cambio lo requiere)
 

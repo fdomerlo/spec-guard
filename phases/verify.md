@@ -37,6 +37,29 @@ También invocar el middleware para conteo determinista:
 python3 scripts/state_manager.py check-completion --change {change-name}
 ```
 
+### Paso 2b: Verificación Determinista de Criterios (CRIT-XX)
+
+Invocar el validador determinista de criterios de aceptación:
+
+```bash
+python3 -m spec_guard.cli verify-crit --change {change-name}
+# o alternativamente:
+./scripts/verify-crit.sh {change-name}
+```
+
+```text
+verify-crit:
+├── Extrae criterios CRIT-XX de tasks.md, design.md u objective.md
+├── Verifica anotaciones: [automated] vs [manual]
+├── Para cada criterio [automated]:
+│   └── Busca trazabilidad en archivos de test (tests/, test/, spec/, src/)
+└── Retorna:
+    ├── 0 si todos los criterios automatizados están cubiertos por tests
+    └── 2 (BLOQUEANTE) si existen criterios automatizables sin tests
+```
+
+**REGLA CRÍTICA:** Si `verify-crit` retorna código de salida 2 o detecta criterios automatizables sin trazabilidad en tests, el veredicto es **RECHAZADO** (CRITICAL). La fase no puede aprobarse ni archivarse con criterios de aceptación huérfanos.
+
 ### Paso 3: Verificar Corrección (coincidencia con specs)
 
 ```text
@@ -139,6 +162,12 @@ Formato:
 |-----------|-----------|------|-----------|
 | {REQ-01}  | {Nombre}  | `{test}` | ✅ CUMPLE |
 
+### Trazabilidad de Criterios de Aceptación (CRIT-XX)
+**Comando**: `python3 -m spec_guard.cli verify-crit --change {change-name}`
+| Criterio | Tipo | Evidencia / Ubicación de Test | Estado |
+|----------|------|-------------------------------|--------|
+| {CRIT-01}| auto | `tests/unit/test_*.py`        | ✅ CUBIERTO / ❌ SIN TEST |
+
 ### Problemas Encontrados
 **CRITICAL**: {Lista o "Ninguno"}
 **WARNING**: {Lista o "Ninguno"}
@@ -151,7 +180,7 @@ Formato:
 ### Paso 8: Decidir
 
 ```text
-Si hay issues CRITICAL:
+Si hay issues CRITICAL o verify-crit falló (exit 2):
   → Ejecutar ROLLBACK y reportar los problemas al usuario
   → El cambio vuelve a EXECUTE para corrección
 
@@ -168,7 +197,7 @@ Este paso se ejecuta automáticamente después de un veredicto APROBADO, como pa
 
 #### 9.1 Control de bloqueantes
 
-Verificar que `verify-report.md` no contenga issues **CRITICAL**. Si los contiene, ABORTAR.
+Verificar que `verify-report.md` no contenga issues **CRITICAL** y que `verify-crit` haya retornado exit code 0. Si existen criterios no cubiertos o tests rotos, ABORTAR.
 
 #### 9.2 Verificar estado git
 
@@ -181,22 +210,27 @@ git status --porcelain
 
 #### 9.3 Sincronizar specs delta con specs principales
 
-Para cada spec en `.state-guard/changes/{change-name}/specs/`:
+Para cada spec en `.spec-guard/changes/{change-name}/specs/` (o `.state-guard/...`):
 
-**Si existe la spec principal** (`.state-guard/specs/{dominio}/spec.md`):
+**Si existe la spec principal** (`.spec-guard/specs/{dominio}/spec.md`):
 - Requisitos AGREGADOS → agregar a la spec principal
 - Requisitos MODIFICADOS → reemplazar el requisito coincidente
 - Requisitos ELIMINADOS → eliminar el requisito coincidente
 - PRESERVAR todos los requisitos no mencionados en el delta
 
 **Si NO existe la spec principal:**
-- La spec delta es completa. Copiarla directamente a `.state-guard/specs/{dominio}/spec.md`.
+- La spec delta es completa. Copiarla directamente a `.spec-guard/specs/{dominio}/spec.md`.
 
-#### 9.4 Mover al archivo
+#### 9.4 Mover al archivo y limpiar sesión (SESSION.md)
 
-```
-.state-guard/changes/{change-name}/
-  → .state-guard/changes/archive/YYYY-MM-DD-{change-name}/
+1. **Archivado del cursor de sesión**: Si existe `SESSION.md` en la raíz del repositorio:
+   - Copiar o mover `SESSION.md` a `.spec-guard/changes/{change-name}/SESSION.md` como registro histórico de la ejecución.
+   - Eliminar `SESSION.md` de la raíz del repositorio (`rm -f SESSION.md`) para dejar el espacio de trabajo limpio para futuros cambios.
+
+2. **Mover directorio del cambio al archivo**:
+```text
+.spec-guard/changes/{change-name}/
+  → .spec-guard/changes/archive/YYYY-MM-DD-{change-name}/
 ```
 
 Usar la fecha de hoy en formato ISO.
@@ -207,7 +241,8 @@ Usar la fecha de hoy en formato ISO.
 ## Cambio Archivado
 
 **Cambio**: {change-name}
-**Archivado en**: .state-guard/changes/archive/{YYYY-MM-DD}-{change-name}/
+**Archivado en**: .spec-guard/changes/archive/{YYYY-MM-DD}-{change-name}/
+**Cursor SESSION.md**: Archivado y limpiado de la raíz
 
 ### Specs Sincronizadas
 | Dominio   | Acción             | Detalles                                       |

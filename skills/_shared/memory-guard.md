@@ -28,18 +28,19 @@ Por defecto, ejecutás cada fase **inline** cargando el archivo `.md` correspond
 Cuando ejecutás inline:
 
 ```text
-1. Cargá el archivo `.md` de la fase (ej. `phases/execute.md`)
+1. Cargá el archivo `.md` de la fase (ej. `phases/plan.md`, `phases/execute.md`, `phases/verify.md`)
 2. Seguí sus instrucciones como si fueran tuyas
-3. El protocolo de transacción (BEGIN/COMMIT) se aplica automáticamente
-4. Persistí el artefacto en disco Y actualizá el estado invocando `sg` en la terminal
-5. Reportá el resultado al usuario
+3. En fase EXECUTE: operá a través del cursor liviano `SESSION.md` (~250 tokens) para optimizar el presupuesto de tokens. Verificá ancestro Git (`git merge-base`) antes de continuar.
+4. El protocolo de transacción (BEGIN/COMMIT) se aplica automáticamente
+5. Persistí el artefacto en disco Y actualizá el estado invocando `sg` en la terminal
+6. Reportá el resultado al usuario
 ```
 
 Cuando delegás a sub-agente:
 
 ```text
-1. Pasá al sub-agente: nombre del change + rutas de artefactos de dependencia
-2. El sub-agente ejecuta, persiste artefactos en disco, y retorna resumen
+1. Pasá al sub-agente: nombre del change + cursor SESSION.md + rutas de artefactos
+2. El sub-agente ejecuta, persiste artefactos en disco, y actualiza SESSION.md
 3. Vos actualizás el estado invocando `sg commit` en la terminal (el sub-agente NO toca state.ini)
 4. Reportá el resultado al usuario
 ```

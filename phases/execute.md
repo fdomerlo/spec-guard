@@ -9,96 +9,72 @@ La fase **EXECUTE** absorbe el trabajo de desglose en tareas (`tasks`) e impleme
 
 ## Qué Hacer
 
-### Paso 1: Leer el Contexto
+### Paso 1: Leer el Contexto e Inicializar el Cursor de Sesión
 
-Antes de escribir CUALQUIER código:
+Para garantizar el **mínimo consumo de tokens**, la fase EXECUTE opera en dos niveles:
 
-1. **Plan** — leer `.state-guard/changes/{change-name}/objective.md` y `design.md`
-2. **Specs delta** — leer todos los archivos en `.state-guard/changes/{change-name}/specs/`
-3. **Código existente** — leer los archivos afectados según la tabla de archivos del plan
-4. **Convenciones** — leer `config.yaml` si existe
+1. **Arranque inicial de la fase (solo la primera vez):**
+   - Leer `tasks.md` (o generarlo en el Paso 2 si no existe).
+   - Inicializar el cursor liviano `SESSION.md` (~250 tokens) en la raíz del repo:
+     ```bash
+     sg session-checkpoint --change {change-name} --action "Comenzar primera tarea"
+     ```
+2. **Iteraciones sucesivas durante EXECUTE (regla de bajo consumo):**
+   - **PROHIBIDO releer `objective.md` y `design.md` completos en cada ciclo.**
+   - El agente lee **únicamente `SESSION.md`** y los archivos de código y test involucrados en la tarea inmediata.
+   - Verificar integridad de Git:
+     ```bash
+     git merge-base --is-ancestor <base-commit> HEAD
+     ```
+     Si el comando falla (código != 0), la rama divergió (rebase, reset, force-push). **DETENÉTE inmediatamente** y alertá al usuario.
 
-**REGLA CRÍTICA:** Solo leer specs delta del cambio actual. NUNCA leer `specs/` completo del proyecto.
+### Paso 2: Generar tasks.md con Trazabilidad `CRIT-XX`
 
-### Paso 2: Generar tasks.md
-
-A partir del plan, produce el desglose de tareas atómicas:
-
-```
-.state-guard/changes/{change-name}/
-├── objective.md         ← (ya existe)
-├── design.md            ← (ya existe)
-├── specs/               ← (ya existe)
-└── tasks.md             ← Lo creas vos
-```
-
-Formato:
+A partir del plan aprobado, produce el desglose de tareas atómicas vinculadas a los criterios de aceptación:
 
 ```markdown
 # Tareas: {Título del Cambio}
 
-## Fase 1: {Nombre} (ej: Infraestructura)
+## Fase 1: {Nombre}
+- [ ] [T001] CRIT-01: {Descripción con ruta de archivo específica}
+- [ ] [T002] CRIT-02: {Descripción atómica}
 
-- [ ] [T001] {Tarea atómica con ruta de archivo específica}
-- [ ] [T002] {Tarea atómica}
-
-## Fase 2: {Nombre} (ej: Implementación Core)
-
-- [ ] [T003] {Tarea atómica}
-
-## Fase 3: {Nombre} (ej: Testing)
-
-- [ ] [T004] {Tarea atómica}
+## Fase 2: {Nombre}
+- [ ] [T003] CRIT-03: (manual) {Verificación que requiere criterio humano}
 ```
 
 Reglas del desglose:
-- Cada tarea = un archivo o módulo lógico (sin "tareas monstruo")
-- IDs de tarea en formato `[Txxx]` — son usados por el CLI (`mark_task_completed`)
-- Agrupar por fase: infraestructura → implementación → testing
-- Referenciar escenarios de spec como criterios de aceptación
+- Cada tarea = un archivo o módulo lógico (sin tareas monstruo).
+- IDs de tarea en formato `[Txxx]` y mapeo a `CRIT-XX` cuando corresponda a un criterio de la spec.
+- Criterios manuales llevan `(manual)`.
 
 ### Paso 3: Detectar Modo de Implementación
 
 ```text
 Detectar modo TDD (en orden de prioridad):
-├── .state-guard/config.yaml → rules.apply.tdd (true/false)
+├── .spec-guard/config.yaml → rules.apply.tdd (true/false)
 ├── Skills instaladas del usuario (ej: tdd/SKILL.md existe)
 ├── Patrones de test existentes en el código base
-└── Por defecto: modo estándar (código primero)
+└── Por defecto: TDD obligatorio para correcciones/criterios CRIT-XX
 ```
 
-### Paso 4: Implementar Tareas
+### Paso 4: Implementar Tareas (TDD RED → GREEN)
 
-#### Modo TDD (RED → GREEN → REFACTOR)
-
-Para cada tarea:
-1. **ENTENDER**: Leer descripción + escenarios de spec relevantes
-2. **RED**: Escribir test que describe el comportamiento esperado → confirmar que FALLA
-3. **GREEN**: Implementar el mínimo código para que el test pase → confirmar que PASA
-4. **REFACTOR**: Limpiar sin cambiar comportamiento → confirmar que SIGUE PASANDO
-5. Marcar tarea `[x]` en `tasks.md`
+Para cada tarea con criterio automatizado `CRIT-XX`:
+1. **RED**: Escribir la prueba unitaria o de integración cuyo nombre incluya la etiqueta exacta (`test('CRIT-01: ...')` o `def test_crit_01_...()`). Confirmar que FALLA.
+2. **GREEN**: Implementar el código mínimo de producción para que la prueba PASE.
+3. **REFACTOR**: Limpiar el código sin alterar comportamiento. Confirmar suite en verde.
+4. **CHECKPOINT**: Marcar tarea en `tasks.md` (`sg mark-task`) y actualizar el cursor:
+   ```bash
+   sg session-checkpoint --change {change-name} --action "Siguiente tarea" --completed "CRIT-XX implementado"
+   ```
 
 > CRÍTICO: Ejecutar tests con una terminal real. PROHIBIDO simular o inferir resultados.
-
-Detectar test runner desde `phases/_shared/test-runner-detection.md`.
-
-#### Modo Estándar
-
-Para cada tarea:
-1. Leer descripción y escenarios de spec
-2. Leer patrones de código existentes
-3. Escribir el código
-4. Marcar tarea `[x]` en `tasks.md`
-
-#### Tamaño del lote
-
-Por defecto: 3 tareas por invocación. Ajustar según contexto disponible.
-Si hay más de 10 tareas pendientes Y el host soporta sub-agentes → delegar según `memory-guard.md §Delegación`.
 
 ### Paso 5: Verificar progreso con el middleware
 
 ```bash
-python3 scripts/state_manager.py check-completion --change {change-name}
+sg check-completion --change {change-name}
 ```
 
 Reporta `total`, `completed`, `all_complete`, `last_completed_id`.

@@ -1,0 +1,24 @@
+# Session Checkpoint
+
+- **Plan:** {{PLAN}}
+- **Phase:** {{PHASE}}
+- **Status:** {{STATUS}}
+- **Updated:** {{UPDATED}}
+- **Base commit:** {{BASE_COMMIT}}
+
+## Completed in this session
+{{COMPLETED}}
+
+## Current working state
+{{WORKING_STATE}}
+
+## Next action
+{{NEXT_ACTION}}
+
+## Open decisions
+{{OPEN_DECISIONS}}
+
+## Verification
+- Tests: {{TEST_STATUS}}
+- Trazabilidad CRIT: {{CRIT_STATUS}}
+- Human review: {{REVIEW_STATUS}}

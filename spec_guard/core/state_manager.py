@@ -246,6 +246,12 @@ def cmd_begin(args):
         config.set("Transaction", "txn_status", "in_progress")
         config.set("Transaction", "txn_phase", args.phase)
         config.set("Transaction", "txn_started_at", datetime.now().isoformat())
+        try:
+            res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=str(REPO_ROOT))
+            if res.returncode == 0 and res.stdout.strip():
+                config.set("Transaction", "base_commit", res.stdout.strip())
+        except Exception:
+            pass
         save_state(config, path)
         print(f"SUCCESS|BEGIN transaccional iniciado para fase: {args.phase}")
 
@@ -606,6 +612,14 @@ def cmd_validate_spec(args):
         if unresolved:
             issues.append({"file": label, "issue": "UNRESOLVED_PLACEHOLDER",
                             "detail": unresolved[:5]})
+        if label == "objective.md":
+            has_oos = any(k in content.lower() for k in ["fuera de alcance", "fuera del alcance", "out of scope"])
+            if not has_oos:
+                issues.append({
+                    "file": label,
+                    "issue": "MISSING_OUT_OF_SCOPE",
+                    "detail": "Falta definir explícitamente qué queda fuera de alcance (Out of scope)."
+                })
 
     result = {"ok": len(issues) == 0, "change": args.change, "issues": issues}
     print(json.dumps(result, ensure_ascii=False))
