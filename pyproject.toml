@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "state-guard"
-version = "2.0.0"
-description = "Framework de memoria transaccional para agentes LLM (MCP)"
+name = "spec-guard"
+version = "3.0.0"
+description = "Motor de desarrollo guiado por especificaciones (SDD) y gobernanza para agentes de IA"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["mcp>=1.0.0,<2.0.0"]
@@ -14,7 +14,10 @@ dependencies = ["mcp>=1.0.0,<2.0.0"]
 hooks = ["watchdog>=4.0,<5.0", "pyyaml"]
 
 [project.scripts]
-state-guard-mcp = "scripts.mcp_server:main"
+sg = "spec_guard.cli:main"
+spec-guard = "spec_guard.cli:main"
+spec-guard-mcp = "spec_guard.mcp.server:main"
+state-guard-mcp = "spec_guard.mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["scripts"]
+packages = ["spec_guard"]

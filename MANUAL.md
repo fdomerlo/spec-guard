@@ -1,6 +1,6 @@
-# Manual Técnico — State Guard
+# Manual Técnico — SpecGuard
 
-Este manual cubre la arquitectura técnica, configuración y flujos avanzados del sistema State Guard.
+Este manual cubre la arquitectura técnica, configuración y flujos avanzados del sistema **SpecGuard v3.0.0**, el motor de Specification-Driven Development (SDD) y persistencia transaccional para agentes de código. SpecGuard soporta nativamente la estructura `.spec-guard/` a la vez que mantiene compatibilidad hacia atrás completa con proyectos que utilicen `.state-guard/`.
 
 -## Arquitectura Memory Guard
 
@@ -503,7 +503,7 @@ Actúas como un desarrollador y diseñador de componentes Vue/React/HTML...
 
 ## Servidor MCP
 
-State Guard expone un servidor MCP nativo sobre `stdio` (`scripts/mcp_server.py`), permitiendo a clientes compatibles (ej. Claude Desktop, Cursor, OpenCode) interactuar con herramientas auxiliares y de verificación de estado.
+SpecGuard expone un servidor MCP nativo sobre `stdio` (`spec_guard.mcp.server`), permitiendo a clientes compatibles (ej. Claude Desktop, Cursor, OpenCode) interactuar con herramientas auxiliares, recursos URI y de verificación de estado.
 
 ### Herramientas Expuestas (Tools)
 
@@ -512,11 +512,18 @@ State Guard expone un servidor MCP nativo sobre `stdio` (`scripts/mcp_server.py`
 | `get_next_task` | `change: str` | Retorna la próxima tarea pendiente de `tasks.md` para el change especificado. | JSON con el objeto tarea o `null` si no hay pendientes. |
 | `verify_phase_gate` | `change: str, phase: str` | Verifica si la fase solicitada está autorizada por el DAG antes de ejecutarla. | JSON con `{"authorized": true/false}`. |
 | `mark_task_completed` | `change: str, task_id: str` | Marca una tarea como completada por ID en `tasks.md` (idempotente). | JSON con el resultado de la actualización. |
+| `get_active_changes` | ninguna | Lista todos los cambios activos registrados y su fase actual. | JSON con array de cambios activos. |
+
+### Recursos Expuestos (Resources)
+
+SpecGuard expone las especificaciones de diseño como recursos MCP URI de solo lectura:
+- `spec://{change}/objective` — Contenido de `objective.md`.
+- `spec://{change}/design` — Contenido de `design.md`.
 
 ### Decisiones de Diseño
 
 - **Comandos Transaccionales**: `begin`, `commit`, `rollback`, `checkpoint` **NO** se exponen como herramientas MCP. Se mantienen como invocaciones CLI (`sg begin`, `sg commit`, etc.) para preservar la separación explícita entre el canal MCP de utilidades y la capa de control transaccional estricta.
-- **Gates Humanos**: `plan-approve`, `plan-confirm`, `hotfix-init`, `hotfix-confirm` tampoco se exponen por MCP; son comandos exclusivos de terminal interactiva para garantizar interacción humana out-of-band.
+- **Gates Humanos**: `plan-approve`, `plan-confirm`, `hotfix-init`, `hotfix-confirm` tampoco se exponen por MCP; son comandos exclusivos de terminal interactiva para garantizar interacción humana out-of-band con tokens SHA-256 y protección de 3 intentos.
 
 ### Configuración en Clientes MCP
 
@@ -527,7 +534,7 @@ Agrega el siguiente bloque a tu archivo de configuración de cliente MCP (`claud
 ```json
 {
   "mcpServers": {
-    "state-guard": {
+    "spec-guard": {
       "command": "uvx",
       "args": [
         "git+https://github.com/fdomerlo/state-guard.git"
@@ -542,9 +549,9 @@ Agrega el siguiente bloque a tu archivo de configuración de cliente MCP (`claud
 Clona e instala en modo editable con `uv` o `pip`:
 
 ```bash
-git clone https://github.com/fdomerlo/state-guard.git ~/.local/share/mcp-servers/state-guard
-cd ~/.local/share/mcp-servers/state-guard
-uv venv && uv pip install -e .
+git clone https://github.com/fdomerlo/state-guard.git ~/.local/share/mcp-servers/spec-guard
+cd ~/.local/share/mcp-servers/spec-guard
+uv venv && uv pip install -e '.[mcp]'
 ```
 
 Configuración en el cliente MCP:
@@ -552,8 +559,8 @@ Configuración en el cliente MCP:
 ```json
 {
   "mcpServers": {
-    "state-guard": {
-      "command": "/ruta/a/tu/home/.local/share/mcp-servers/state-guard/.venv/bin/state-guard-mcp"
+    "spec-guard": {
+      "command": "/ruta/a/tu/home/.local/share/mcp-servers/spec-guard/.venv/bin/spec-guard-mcp"
     }
   }
 }
@@ -576,16 +583,16 @@ Para evitar la alteración no supervisada de la arquitectura o la evasión de co
 | Actualizar tests derivados de un cambio | Hook automático permitido | **No** |
 | Sincronizar documentación (README/MANUAL secciones autogeneradas) | Hook automático permitido | **No** |
 | `mark_task_completed` en `tasks.md` | Hook automático permitido | **No** |
-| Cualquier escritura dentro de `.state-guard/changes/*/objective.md` o `design.md` | **Prohibido para hooks** | N/A — un hook nunca toca estos dos archivos |
+| Cualquier escritura dentro de `objective.md` o `design.md` | **Prohibido para hooks** | N/A — un hook nunca toca estos dos archivos |
 
-### Configuración (`.state-guard/hooks.yaml`)
+### Configuración (`.spec-guard/hooks.yaml` o `.state-guard/hooks.yaml`)
 
-Las reglas declarativas se definen en `.state-guard/hooks.yaml` (copiado desde `.state-guard/hooks.yaml.example`):
+Las reglas declarativas se definen en `.spec-guard/hooks.yaml` (o `.state-guard/hooks.yaml`):
 
 ```yaml
 hooks:
   - name: sync-tests-on-save
-    pattern: "**/scripts/**/*.py"
+    pattern: "**/spec_guard/**/*.py"
     events: ["on_save"]
     prompt: >
       Se modificó {path}. Revisá si los tests unitarios correspondientes en
@@ -596,11 +603,11 @@ hooks:
 
 ### Registro de Auditoría (`hooks.log.jsonl`)
 
-Toda acción ejecutada por un hook queda registrada de forma append-only en `.state-guard/hooks.log.jsonl` con el timestamp, nombre de la regla, archivo modificado, estado (`triggered`, `done`, `error`) y código de salida. Este log proporciona la fuente principal para auditar qué hizo un agente en background sin supervisión en el momento, reemplazando al gate humano en acciones derivadas.
+Toda acción ejecutada por un hook queda registrada de forma append-only en `hooks.log.jsonl` con el timestamp, nombre de la regla, archivo modificado, estado (`triggered`, `done`, `error`) y código de salida.
 
 ### Gestión del Daemon (`sg hooks-*`)
 
-- **Iniciar**: `sg hooks-start` (lanza `scripts/hook_daemon.py` en background y registra el PID en `.state-guard/hooks.pid`).
+- **Iniciar**: `sg hooks-start` (lanza el daemon en background y registra el PID en `hooks.pid`).
 - **Estado**: `sg hooks-status` (informa si el daemon está activo).
 - **Detener**: `sg hooks-stop` (detiene el proceso de forma limpia vía `SIGTERM`).
 
@@ -610,27 +617,27 @@ Toda acción ejecutada por un hook queda registrada de forma append-only en `.st
 
 ### El estado no avanza
 
-1. Verificar que `state.ini` existe en `.state-guard/changes/{change-name}/`
-2. Verificar `txn_status` vía `state_manager.py status`: si es `in_progress`, hay una transacción incompleta.
+1. Verificar que `state.ini` existe en `.spec-guard/changes/{change-name}/` (o `.state-guard/changes/...`)
+2. Verificar `txn_status` vía `sg status`: si es `in_progress`, hay una transacción incompleta.
 3. Ejecutar `/continue` para que el Recovery Protocol intente resolver automáticamente.
 
 ### Los artefactos no persisten
 
-1. Verificar que el directorio `.state-guard/` existe
+1. Verificar que el directorio `.spec-guard/` (o `.state-guard/`) existe
 2. Revisar permisos de escritura
 3. Confirmar que el cambio tiene un `state.ini` válido
 
 ### Transacción incompleta detectada
 
 1. El Recovery Protocol intenta resolver automáticamente al ejecutar `/continue`
-2. Como último recurso, editar manualmente `state.ini`: setear `txn_status = idle`, `txn_phase = None`
+2. Como último recurso, revertir mediante `sg rollback --change {nombre}`
 
 ### Conflictos entre cambios
 
-1. Usar `/status` para ver todos los cambios activos (incluye columna de estado transaccional)
+1. Usar `sg status` para ver todos los cambios activos (incluye columna de estado transaccional)
 2. Archivar cambios completados antes de iniciar nuevos
-3. No trabajar en el mismo cambio desde múltiples sesiones
+3. No trabajar en el mismo cambio desde múltiples sesiones simultáneas
 
 ---
 
-*Manual técnico — State Guard v2.0 — Arquitectura Memory Guard*
+*Manual técnico — SpecGuard v3.0.0 — Motor SDD y Persistencia Transaccional*

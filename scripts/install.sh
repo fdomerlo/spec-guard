@@ -2,12 +2,12 @@
 set -euo pipefail
 
 # ============================================================================
-# State Guard: Universal Install Script (OpenCode / Antigravity)
+# SpecGuard: Universal Install Script (OpenCode / Antigravity)
 # ============================================================================
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "Usage: ./install.sh"
-    echo "Instala State Guard de forma universal."
+    echo "Instala SpecGuard de forma universal."
     exit 0
 elif [[ $# -gt 0 ]]; then
     echo "Error: Opcion desconocida '$1'."
@@ -18,15 +18,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 SOURCE_SKILLS_DIR="$REPO_DIR/skills"
 SOURCE_PHASES_DIR="$REPO_DIR/phases"
-TARGET_DIR="$HOME/.agents/skills/state-guard"
+TARGET_DIR="$HOME/.agents/skills/spec-guard"
 
-MARKER_START="<!-- state-guard:begin -->"
-MARKER_END="<!-- state-guard:end -->"
+MARKER_START="<!-- spec-guard:begin -->"
+MARKER_END="<!-- spec-guard:end -->"
+LEGACY_MARKER_START="<!-- state-guard:begin -->"
+LEGACY_MARKER_END="<!-- state-guard:end -->"
 
-echo "Iniciando instalación universal de State Guard..."
+echo "Iniciando instalación universal de SpecGuard..."
 
-# 1. Directorios unificados y copia de skills/phases/binarios
+# 1. Directorios unificados y copia de código, skills, fases y binarios
 mkdir -p "$TARGET_DIR/bin" "$TARGET_DIR/_shared" "$TARGET_DIR/phases/_shared"
+
+echo "→ Copiando paquete canónico spec_guard y binarios..."
+cp -r "$REPO_DIR/spec_guard" "$TARGET_DIR/"
+cp "$SCRIPT_DIR"/*.py "$TARGET_DIR/bin/" 2>/dev/null || true
+chmod +x "$TARGET_DIR/bin"/*.py
 
 echo "→ Copiando contratos y skills..."
 cp -r "$SOURCE_SKILLS_DIR/_shared/"* "$TARGET_DIR/_shared/"
@@ -34,7 +41,7 @@ cp -r "$SOURCE_SKILLS_DIR/_shared/"* "$TARGET_DIR/_shared/"
 # Copiar contratos compartidos de fases
 cp -r "$SOURCE_PHASES_DIR/_shared/"* "$TARGET_DIR/phases/_shared/"
 
-# Copiar las 8 fases (archivos planos)
+# Copiar fases
 phase_count=0
 for phase_file in "$SOURCE_PHASES_DIR"/*.md; do
     [ -f "$phase_file" ] || continue
@@ -54,19 +61,21 @@ for skill_dir in "$SOURCE_SKILLS_DIR"/*/; do
         count=$((count + 1))
     fi
 done
-
-cp "$SCRIPT_DIR/sg.py" "$SCRIPT_DIR/state_manager.py" "$SCRIPT_DIR/_lock_utils.py" "$TARGET_DIR/bin/"
-chmod +x "$TARGET_DIR/bin/state_manager.py" "$TARGET_DIR/bin/sg.py"
-
 echo "  ✓ $count skills instaladas en $TARGET_DIR"
+
+# Enlaces simbólicos en ~/.local/bin si existe o se crea
+mkdir -p "$HOME/.local/bin"
+ln -sf "$TARGET_DIR/bin/sg.py" "$HOME/.local/bin/sg"
+ln -sf "$TARGET_DIR/bin/sg.py" "$HOME/.local/bin/spec-guard"
+echo "  ✓ Symlinks creados en ~/.local/bin/sg y ~/.local/bin/spec-guard"
 
 # 2. Texto de Bootstrap (Directiva Única)
 BOOTSTRAP_TEXT=$(cat <<EOF
-## ACTIVE PERSISTENCE CONTRACT: state-guard (memory-guard)
+## ACTIVE SPECIFICATION-DRIVEN DEVELOPMENT (SDD) CONTRACT: SpecGuard
 MANDATORY BOOTSTRAP — execute before responding to anything:
 1. Call read_file on $TARGET_DIR/_shared/memory-guard.md.
-2. Follow every instruction in that file as your absolute state contract.
-3. State manager binary: $TARGET_DIR/bin/sg.py
+2. Follow every instruction in that file as your absolute SDD state contract.
+3. SpecGuard CLI binary: $TARGET_DIR/bin/sg.py (or 'sg' in PATH)
    Subcomandos operativos (agente): begin | commit | rollback | checkpoint | status
                                      | next-task | verify-gate | mark-task
    Subcomandos EXCLUSIVOS DE HUMANO (el agente nunca los ejecuta):
@@ -74,7 +83,7 @@ MANDATORY BOOTSTRAP — execute before responding to anything:
    Si 'commit' devuelve EXIT_GATE_REQUIRED (5): DETENÉ el ciclo y pedile
    al usuario que corra 'sg plan-approve --change <nombre>' en su propia
    terminal, y luego 'sg plan-confirm --change <nombre> --token <CODIGO>'.
-4. Check for an active change at .state-guard/changes/*/state.ini
+4. Check for an active change at .spec-guard/changes/*/state.ini (or legacy .state-guard/changes/*/state.ini)
    and act accordingly (Cold Boot, Resume via 'status', or Recovery).
 EOF
 )
@@ -84,6 +93,8 @@ export BOOTSTRAP_TEXT
 GEMINI_FILE="$HOME/.gemini/GEMINI.md"
 mkdir -p "$(dirname "$GEMINI_FILE")"
 if [[ -f "$GEMINI_FILE" ]]; then
+    # Limpiar marcadores legacy y actuales si ya existían
+    sed -i.bak "/$LEGACY_MARKER_START/,/$LEGACY_MARKER_END/d" "$GEMINI_FILE" && rm -f "$GEMINI_FILE.bak"
     sed -i.bak "/$MARKER_START/,/$MARKER_END/d" "$GEMINI_FILE" && rm -f "$GEMINI_FILE.bak"
 fi
 {
@@ -118,18 +129,21 @@ else:
 if 'agent' not in cfg:
     cfg['agent'] = {}
 
-cfg['agent']['state-guard'] = {
+# Registrar spec-guard y limpiar legacy si existía
+cfg['agent']['spec-guard'] = {
     'mode': 'all',
-    'description': 'Memory Guard — Agente con Memoria Transaccional',
+    'description': 'SpecGuard — Specification-Driven Development (SDD) Engine',
     'prompt': bootstrap,
     'tools': {'read': True, 'write': True, 'edit': True, 'bash': True},
 }
+if 'state-guard' in cfg['agent']:
+    del cfg['agent']['state-guard']
 
 os.makedirs(os.path.dirname(config_path), exist_ok=True)
 with open(config_path, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, indent=2, ensure_ascii=False)
 PY
-echo "  ✓ Agente state-guard registrado directamente en opencode.jsonc"
+echo "  ✓ Agente spec-guard registrado directamente en opencode.jsonc"
 
 # 5. Generación Dinámica de Slash Commands (OpenCode)
 CMD_DIR="$HOME/.config/opencode/commands"
@@ -143,14 +157,13 @@ cmd_count=0
 for phase_file in "$TARGET_DIR/phases"/*.md; do
     [ -f "$phase_file" ] || continue
     phase_name=$(basename "$phase_file" .md)
-    # Extraer descripción del primer heading
     desc=$(head -5 "$phase_file" | grep '^# ' | head -1 | sed 's/^# //')
     [ -z "$desc" ] && desc="Fase $phase_name"
 
     cat > "$CMD_DIR/${phase_name}.md" <<EOF
 ---
 description: "$desc"
-agent: state-guard
+agent: spec-guard
 ---
 Lee el archivo $TARGET_DIR/phases/${phase_name}.md y ejecuta sus instrucciones al pie de la letra.
 EOF
@@ -160,7 +173,7 @@ done
 # Generar slash commands para skills discoverable (SKILL.md)
 for skill_dir in "$TARGET_DIR"/*/; do
     skill_name=$(basename "$skill_dir")
-    if [[ "$skill_name" == "_shared" || "$skill_name" == "bin" || "$skill_name" == "phases" ]]; then continue; fi
+    if [[ "$skill_name" == "_shared" || "$skill_name" == "bin" || "$skill_name" == "phases" || "$skill_name" == "spec_guard" ]]; then continue; fi
     if [[ ! -f "${skill_dir}SKILL.md" ]]; then continue; fi
     desc=$(python3 - <<'PY' "${skill_dir}SKILL.md"
 import pathlib
@@ -188,7 +201,7 @@ PY
     cat > "$CMD_DIR/${skill_name}.md" <<EOF
 ---
 description: "$desc"
-agent: state-guard
+agent: spec-guard
 ---
 Lee el archivo $TARGET_DIR/$skill_name/SKILL.md y ejecuta sus instrucciones al pie de la letra.
 EOF
@@ -196,6 +209,6 @@ EOF
 done
 echo "  ✓ $cmd_count slash commands generados al vuelo."
 
-echo "→ Tip: Podés ejecutar '$TARGET_DIR/bin/sg.py install-hooks' en tu repositorio para activar hooks de git (ej. post-commit)."
+echo "→ Tip: Podés ejecutar 'sg install-hooks' en tu repositorio para activar hooks de git (ej. post-commit)."
 
-echo -e "\nDone!"
+echo -e "\nDone! SpecGuard v3.0.0 instalado exitosamente."

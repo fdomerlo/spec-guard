@@ -1,5 +1,31 @@
 # Changelog
 
+## [3.0.0] - 2026-09-09
+
+### Rebrand & SDD Engine
+- **Rebranding oficial a SpecGuard (`spec-guard`)**: Evolución completa desde persistencia de estado genérica hacia un motor formal de **Specification-Driven Development (SDD)** con memoria transaccional.
+- **Soporte de Directorio Dual**: Detección nativa y soporte prioritario de `.spec-guard/` manteniendo 100% de retrocompatibilidad con repositorios que usen `.state-guard/`.
+- **CLI unificado**: Preservación del comando `sg` para ergonomía y cero ruptura de hábitos, con alias `spec-guard`.
+
+### Arquitectura Canónica Modular (`spec_guard/`)
+- Creación del paquete canónico `spec_guard`:
+  - `spec_guard.core.locking`: POSIX write-locks atómicos con detección de locks huérfanos/estériles por PID y antigüedad.
+  - `spec_guard.core.state_manager`: Motor transaccional ACID (`BEGIN`, `COMMIT`, `ROLLBACK`, `CHECKPOINT`, `STATUS`).
+  - `spec_guard.cli`: Punto de entrada CLI con soporte de entorno `SPECGUARD_GATE_DIR` y salidas formateadas en JSON.
+  - `spec_guard.mcp.server`: Servidor FastMCP nativo exponiendo 4 herramientas (`get_next_task`, `verify_phase_gate`, `mark_task_completed`, `get_active_changes`) y recursos URI de solo lectura (`spec://{change}/objective`, `spec://{change}/design`).
+  - `spec_guard.daemon.hook_daemon`: Observador de filesystem para tareas derivadas con prohibición hardcodeada de mutar especificaciones de arquitectura.
+- **Shims de Compatibilidad**: Mantenimiento de ejecutables delgados en `scripts/` (`sg.py`, `state_manager.py`, `_lock_utils.py`, `mcp_server.py`, `hook_daemon.py`).
+
+### Seguridad & Hardening
+- **Gate Lockout**: Implementación de revocación automática del token de aprobación humana y bloqueo de sesión tras 3 intentos fallidos consecutivos en `plan-confirm` y `hotfix-confirm`.
+- **Validación de Terminal Física**: Verificación reforzada de `/dev/tty` con aislamiento de PTY.
+
+### Distribución & Documentación
+- `pyproject.toml` actualizado para `spec-guard` v3.0.0 con entrypoints `sg`, `spec-guard`, `spec-guard-mcp` y alias de compatibilidad `state-guard-mcp`.
+- `scripts/install.sh`: Instalación unificada en `~/.agents/skills/spec-guard`, symlinks en `~/.local/bin/sg`, y registro en orquestadores (`GEMINI.md`, `opencode.jsonc`).
+- `README.md` reescrito por completo como la documentación oficial de SpecGuard; purga de `README.old.md`.
+- `MANUAL.md` actualizado con la arquitectura v3.0.0 y recursos MCP.
+
 ## [2.6.0] - 2026-07-30
 
 ### Spec-Driven Coding (Fase 4A)

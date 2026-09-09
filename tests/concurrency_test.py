@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 CHANGE = "test-change"
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.environ["SPECGUARD_GATE_DIR"] = os.path.join(REPO_ROOT, ".test-gate")
+os.environ["STATEGUARD_GATE_DIR"] = os.path.join(REPO_ROOT, ".test-gate")
 SCRIPT = os.path.join(REPO_ROOT, "scripts", "state_manager.py")
 SG_SCRIPT = os.path.join(REPO_ROOT, "scripts", "sg.py")
 STATE_PATH = os.path.join(REPO_ROOT, f".state-guard/changes/{CHANGE}/state.ini")
@@ -31,6 +33,12 @@ def run_with_pty(argv, timeout=2.0):
     """Ejecuta argv con una terminal de control real (pty.fork)."""
     pid, fd = pty.fork()
     if pid == 0:
+        try:
+            import fcntl
+            import termios
+            fcntl.ioctl(0, termios.TIOCSCTTY, 1)
+        except Exception:
+            pass
         os.execvp(argv[0], argv)
     else:
         output = b""
@@ -58,6 +66,10 @@ def inject_gate_token():
 
 def reset_state():
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
+    gate_dir = os.environ.get("SPECGUARD_GATE_DIR")
+    if gate_dir and os.path.exists(gate_dir):
+        import shutil
+        shutil.rmtree(gate_dir, ignore_errors=True)
     with open(STATE_PATH, "w") as f:
         f.write(
             "[Metadata]\nlast_updated = 2026-07-02T10:00:00\nschema_version = 2\n\n"
@@ -184,7 +196,7 @@ res_approve = run_with_pty(
     [sys.executable, SG_SCRIPT, "plan-approve", "--change", CHANGE],
 )
 print(f"  plan-approve rc={res_approve.returncode}")
-assert res_approve.returncode == 0, f"FALLO: esperado exit 0, got {res_approve.returncode}: {res_approve.stderr}"
+assert res_approve.returncode == 0, f"FALLO: esperado exit 0, got {res_approve.returncode}: stdout={res_approve.stdout!r} stderr={res_approve.stderr!r}"
 
 payload = extract_last_json(res_approve.stdout)
 assert payload is not None, f"FALLO: no se encontro JSON en la salida: {res_approve.stdout!r}"
@@ -317,10 +329,37 @@ assert payload_hc is not None and payload_hc.get("ok") is True, f"FALLO: hotfix-
 assert payload_hc.get("lock_phase") == "execute", f"FALLO: lock_phase no es execute: {payload_hc}"
 assert not os.path.exists(token_file_h), f"FALLO: token_file {token_file_h} no fue consumido"
 
-# Cleanup
-if os.path.exists(hotfix_dir):
-    shutil.rmtree(hotfix_dir)
-print("  PASS: hotfix-init y hotfix-confirm (hash verification) funcionaron correctamente.\n")
+# ============================================================================
+# TEST 6: HARDENING — Lockout tras 3 intentos fallidos de token
+# ============================================================================
+print("=" * 60)
+print("TEST 6: Lockout de intentos en confirm (max 3 intentos)")
+print("=" * 60)
+reset_state()
+res_l_app = run_with_pty([sys.executable, SG_SCRIPT, "plan-approve", "--change", CHANGE])
+assert res_l_app.returncode == 0, f"plan-approve fallo: {res_l_app.stderr}"
+p_l = extract_last_json(res_l_app.stdout)
+assert p_l is not None
+tf_l = p_l.get("token_file")
+assert tf_l is not None and os.path.exists(tf_l)
+
+# Intento 1 fallido
+r1 = subprocess.run([sys.executable, SG_SCRIPT, "plan-confirm", "--change", CHANGE, "--token", "BAD1"], capture_output=True, text=True)
+assert r1.returncode == 5
+assert os.path.exists(tf_l)
+
+# Intento 2 fallido
+r2 = subprocess.run([sys.executable, SG_SCRIPT, "plan-confirm", "--change", CHANGE, "--token", "BAD2"], capture_output=True, text=True)
+assert r2.returncode == 5
+assert os.path.exists(tf_l)
+
+# Intento 3 fallido -> TOKEN_LOCKED_OUT y token borrado
+r3 = subprocess.run([sys.executable, SG_SCRIPT, "plan-confirm", "--change", CHANGE, "--token", "BAD3"], capture_output=True, text=True)
+assert r3.returncode == 5
+p3 = extract_last_json(r3.stdout)
+assert p3 is not None and p3.get("error") == "TOKEN_LOCKED_OUT", f"Esperado TOKEN_LOCKED_OUT, got {p3}"
+assert not os.path.exists(tf_l), f"El archivo token {tf_l} debio ser eliminado tras 3 fallos"
+print("  PASS: Token revocado exitosamente tras 3 intentos fallidos.\n")
 
 
 print("=" * 60)

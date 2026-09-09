@@ -1,5 +1,11 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.spec-guard/*
+!.spec-guard/hooks.yaml.example
 .state-guard/*
 !.state-guard/hooks.yaml.example
+.test-gate/
+*.egg-info/
+dist/
+build/

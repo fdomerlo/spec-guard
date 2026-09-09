@@ -15,6 +15,11 @@ def run_with_pty(argv, timeout=2.0):
     Returns output combined (stdout + stderr + tty output)."""
     pid, fd = pty.fork()
     if pid == 0:
+        try:
+            import fcntl, termios
+            fcntl.ioctl(0, termios.TIOCSCTTY, 1)
+        except Exception:
+            pass
         os.execvp(argv[0], argv)
     else:
         time.sleep(timeout)
@@ -50,12 +55,14 @@ def create_mock_change(tmpdir, change_name="test-plan-change"):
 
 def test_sg_plan_approve_and_confirm_pty(monkeypatch, tmpdir):
     monkeypatch.chdir(tmpdir)
+    monkeypatch.setenv("SPECGUARD_GATE_DIR", str(tmpdir / ".test-gate"))
+    monkeypatch.setenv("STATEGUARD_GATE_DIR", str(tmpdir / ".test-gate"))
     create_mock_change(str(tmpdir), "test-plan-change")
     
     # 1. plan-approve
     out1 = run_with_pty([sys.executable, SG_PY, "plan-approve", "--change", "test-plan-change"])
     assert "GATE PREPARADO" in out1
-    match = re.search(r"Codigo de confirmacion para 'test-plan-change': ([A-F0-9]+)", out1)
+    match = re.search(r"C[oó]digo de confirmaci[oó]n para 'test-plan-change': ([A-F0-9]+)", out1, re.IGNORECASE)
     assert match is not None, f"Token not found in PTY output: {out1}"
     token = match.group(1)
     
