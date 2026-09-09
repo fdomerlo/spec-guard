@@ -35,6 +35,7 @@ def _find_repo_root():
 
 
 REPO_ROOT = _find_repo_root()
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
 
 def _find_guard_dir(repo_root: Path) -> Path:
@@ -409,6 +410,96 @@ def cmd_session_checkpoint(args):
 def cmd_migrate(args):
     rc, obj, _ = _call_sm(["migrate", "--change", args.change], check_json=True)
     _emit({"ok": rc == 0, **obj}, rc)
+
+
+def cmd_init(args):
+    """Inicializa la estructura .spec-guard/ y los contratos AGENTS.md y CLAUDE.md."""
+    target_dir = REPO_ROOT
+    spec_dir = target_dir / ".spec-guard"
+    (spec_dir / "changes").mkdir(parents=True, exist_ok=True)
+    (spec_dir / "specs").mkdir(parents=True, exist_ok=True)
+
+    config_file = spec_dir / "config.yaml"
+    if not config_file.exists():
+        config_file.write_text(
+            "schema: spec-driven\n"
+            "rules:\n"
+            "  change_naming: kebab-case\n"
+            "  execute:\n"
+            "    - Seguir patrones y convenciones existentes\n"
+            "  verify:\n"
+            "    - Criterios CRIT-XX automatizables deben contar con tests\n",
+            encoding="utf-8"
+        )
+
+    # AGENTS.md
+    agents_template = TEMPLATES_DIR / "AGENTS.md.template"
+    if not agents_template.exists():
+        user_tpl = Path.home() / ".agents" / "skills" / "spec-guard" / "templates" / "AGENTS.md.template"
+        if user_tpl.exists():
+            agents_template = user_tpl
+
+    if agents_template.exists():
+        content = agents_template.read_text(encoding="utf-8")
+    else:
+        content = (
+            "<!-- BEGIN SPECGUARD -->\n"
+            "# Contributor & Executor Contract (SpecGuard SDD)\n\n"
+            "## SDD Lifecycle\n"
+            "Every change follows a strict phase DAG: PLAN -> EXECUTE -> VERIFY.\n"
+            "<!-- END SPECGUARD -->\n"
+        )
+
+    agents_file = target_dir / "AGENTS.md"
+    start_marker = "<!-- BEGIN SPECGUARD -->"
+    end_marker = "<!-- END SPECGUARD -->"
+
+    if not agents_file.exists():
+        agents_file.write_text(content, encoding="utf-8")
+    elif getattr(args, "force", False):
+        agents_file.write_text(content, encoding="utf-8")
+    else:
+        existing = agents_file.read_text(encoding="utf-8")
+        if start_marker in existing and end_marker in existing:
+            pre = existing.split(start_marker)[0]
+            post = existing.split(end_marker, 1)[1]
+            new_text = pre.rstrip() + "\n\n" + content.strip() + "\n" + post.lstrip("\n")
+            agents_file.write_text(new_text, encoding="utf-8")
+        else:
+            agents_file.write_text(existing.rstrip() + "\n\n" + content.strip() + "\n", encoding="utf-8")
+
+    claude_file = target_dir / "CLAUDE.md"
+    if not claude_file.exists():
+        claude_file.write_text("@AGENTS.md\n", encoding="utf-8")
+    elif "@AGENTS.md" not in claude_file.read_text(encoding="utf-8"):
+        claude_file.write_text(claude_file.read_text(encoding="utf-8").rstrip() + "\n@AGENTS.md\n", encoding="utf-8")
+
+    # verify-crit.sh
+    scripts_dir = target_dir / "scripts"
+    verify_script = scripts_dir / "verify-crit.sh"
+    installed_verify = False
+    source_verify = REPO_ROOT / "scripts" / "verify-crit.sh"
+    if not source_verify.exists():
+        source_verify = Path.home() / ".agents" / "skills" / "spec-guard" / "bin" / "verify-crit.sh"
+
+    if source_verify.exists() and source_verify.resolve() != verify_script.resolve():
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        import shutil
+        shutil.copy2(str(source_verify), str(verify_script))
+        os.chmod(str(verify_script), 0o755)
+        installed_verify = True
+    elif verify_script.exists():
+        os.chmod(str(verify_script), 0o755)
+
+    _emit({
+        "ok": True,
+        "repo_dir": str(target_dir),
+        "spec_dir": str(spec_dir),
+        "agents_md": str(agents_file),
+        "claude_md": str(claude_file),
+        "verify_script": str(verify_script) if (installed_verify or verify_script.exists()) else None,
+        "message": "Repositorio inicializado exitosamente para SpecGuard SDD.",
+    })
 
 
 def cmd_init_change(args):
@@ -830,6 +921,10 @@ def build_parser():
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # init (repositorio)
+    p = sub.add_parser("init", help="Inicializa la estructura .spec-guard/ y los contratos en el repositorio")
+    p.add_argument("--force", action="store_true", help="Sobreescribe AGENTS.md en lugar de actualizar por bloques")
+
     # status
     p = sub.add_parser("status", help="Estado actual del change")
     p.add_argument("--change", required=True)
@@ -929,6 +1024,7 @@ def main():
     args = parser.parse_args()
 
     dispatch = {
+        "init": cmd_init,
         "status": cmd_status,
         "begin": cmd_begin,
         "commit": cmd_commit,
