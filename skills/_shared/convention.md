@@ -3,7 +3,7 @@
 ## Estructura de Directorios
 
 ```text
-.spec-guard/ (o .state-guard/)
+.spec-guard/
 ├── config.yaml              ← Configuración del agente específica del proyecto
 ├── specs/                   ← Fuente de verdad (specs actuales del sistema)
 │   └── {dominio}/
@@ -95,13 +95,13 @@ session_summary = ...      ; opcional — bloque generado por checkpoint, ≤500
 Cada skill lee sus dependencias desde el filesystem:
 
 ```text
-Objective:      .state-guard/changes/{change-name}/objective.md
-Specs delta:    .state-guard/changes/{change-name}/specs/
-Diseño:         .state-guard/changes/{change-name}/design.md
-Tareas:         .state-guard/changes/{change-name}/tasks.md
-Configuración:  .state-guard/config.yaml (o .spec-guard/config.yaml)
-Specs actuales: .state-guard/specs/{dominio}/spec.md
-Estado (DAG+sesión): .state-guard/changes/{change-name}/state.ini (vía `state_manager.py status`)
+Objective:      .spec-guard/changes/{change-name}/objective.md
+Specs delta:    .spec-guard/changes/{change-name}/specs/
+Diseño:         .spec-guard/changes/{change-name}/design.md
+Tareas:         .spec-guard/changes/{change-name}/tasks.md
+Configuración:  .spec-guard/config.yaml
+Specs actuales: .spec-guard/specs/{dominio}/spec.md
+Estado (DAG+sesión): .spec-guard/changes/{change-name}/state.ini (vía `sg status`)
 
 ```
 

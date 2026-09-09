@@ -32,7 +32,7 @@ def run_with_pty(argv, timeout=2.0):
 
 
 def create_mock_change(tmpdir, change_name="test-plan-change"):
-    change_dir = os.path.join(tmpdir, ".state-guard", "changes", change_name)
+    change_dir = os.path.join(tmpdir, ".spec-guard", "changes", change_name)
     os.makedirs(change_dir, exist_ok=True)
     state_path = os.path.join(change_dir, "state.ini")
     

@@ -62,7 +62,7 @@ Después de ejecutar COMMIT, reportá al usuario un resumen conciso. No hay form
 
 ## Regla de Glosario
 
-Si existe `.state-guard/config.yaml` con sección `glossary`, cargar los términos y usarlos consistentemente en todos los artefactos generados. Si no existe, continuar normalmente (es opcional).
+Si existe `.spec-guard/config.yaml` con sección `glossary`, cargar los términos y usarlos consistentemente en todos los artefactos generados. Si no existe, continuar normalmente (es opcional).
 
 ## Referencia en Skills
 

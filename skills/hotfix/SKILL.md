@@ -42,15 +42,15 @@ sg hotfix-confirm --change {change-name} --token <CÓDIGO>
 ```
 
 El comando `hotfix-confirm`:
-1. Consume y elimina el token seguro generado fuera del workspace en `~/.state-guard-gate/`.
-2. Crea el directorio `.state-guard/changes/{change-name}/` con `state.ini` v2.
+1. Consume y elimina el token seguro generado fuera del workspace en `~/.spec-guard-gate/`.
+2. Crea el directorio `.spec-guard/changes/{change-name}/` con `state.ini` v2.
 3. Registra el bypass con razón en `state.ini[Gate]` (audit trail completo).
 4. Avanza automáticamente el DAG: plan queda en `completed_phases`, `lock_phase=execute`.
 
 ### Paso 2: Iniciar la transacción de ejecución
 
 ```bash
-python3 scripts/sg.py begin --change {change-name} --phase execute
+sg begin --change {change-name} --phase execute
 ```
 
 ### Paso 3: Ejecución del Código
@@ -63,5 +63,5 @@ archivos fuente del proyecto.
 Una vez aplicados los cambios con éxito, avanza la transacción hacia verificación:
 
 ```bash
-python3 scripts/sg.py commit --change {change-name} --next-phase verify
+sg commit --change {change-name} --next-phase verify
 ```

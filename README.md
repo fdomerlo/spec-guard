@@ -1,201 +1,235 @@
 # SpecGuard
-### Motor de Especificación Dirigida (SDD) y Memoria Transaccional para Agentes de Código
 
-SpecGuard transforma a los asistentes de inteligencia artificial en ingenieros de software rigurosos mediante **Specification-Driven Development (SDD)** y **memoria transaccional persistente**. Un agente gobernado por SpecGuard nunca "olvida" en qué fase se encuentra, qué tareas faltan ni alucina implementaciones: el estado y las especificaciones viven en disco, protegidos transaccionalmente, no en la ventana de contexto de la conversación.
+> **Motor de Desarrollo Dirigido por Especificaciones (SDD) y Gobernador Transaccional para Agentes de Código.**
 
-El flujo de trabajo se estructura en un **DAG estricto de 3 fases con gate humano fuera de banda obligatorio antes de escribir código**: `plan → execute → verify`.
+SpecGuard no es una simple *skill* o extensión pasiva: es un **entorno de gobierno y persistencia transaccional** que transforma a los asistentes de inteligencia artificial (Antigravity, Claude Code, OpenCode, Gemini, Cursor) en ingenieros de software rigurosos y predecibles.
 
----
-
-## Características Principales
-
-- 📐 **SDD Riguroso**: Las especificaciones (`objective.md`, `design.md`, `tasks.md`) son contratos inmutables. El código solo se escribe para cumplir la especificación aprobada con delimitación estricta de alcance (**Fuera del Alcance**).
-- 🧪 **Trazabilidad Determinista de Criterios (`CRIT-XX`)**: Comando `sg verify-crit` que audita automáticamente que cada criterio de aceptación automatizable cuente con tests correspondientes en el código.
-- ⚡ **Cursor de Sesión de Bajo Consumo (`SESSION.md`)**: Registro volátil y ligero (~250 tokens) en la raíz del proyecto para ejecución eficiente, con validación de ancestría Git (`merge-base`) para prevenir desincronizaciones tras compactaciones de contexto.
-- 📜 **Estándar Universal `AGENTS.md`**: Bootstrap seguro y no destructivo del contrato SDD en `AGENTS.md` (compatible con Claude Code, Gemini y OpenCode).
-- 🔐 **Gate Humano Fuera de Banda**: El agente **no puede auto-aprobarse**. Los tokens de validación se emiten exclusivamente a la terminal interactiva del desarrollador (`/dev/tty`), protegidos por SHA-256 y un mecanismo de bloqueo automático tras 3 intentos fallidos.
-- 💾 **ACID State Machine**: Motor de estado transaccional (`BEGIN` / `COMMIT` / `ROLLBACK` / `CHECKPOINT`) con locks POSIX y detección de locks huérfanos/estériles.
-- 🔄 **Compatibilidad Dual**: Funciona nativamente con directorios `.spec-guard/` y mantiene compatibilidad total con proyectos preexistentes basados en `.state-guard/`.
-- 🔌 **Servidor MCP v3.0**: Servidor FastMCP (`spec-guard-mcp`) que expone herramientas de consulta e inspección y recursos URI (`spec://{change}/objective`, `spec://{change}/design`).
-- ⚡ **Agent Hooks Daemon**: Observador en segundo plano para tareas derivadas (linting, tests, docs) con protección hardcodeada que prohíbe modificar especificaciones.
-- 🛠️ **CLI Ergonómico**: Comando unificado `sg` (con alias `spec-guard`).
+El principal problema de los agentes autónomos de código es la amnesia y la deriva: pierden el contexto tras compactaciones de ventana, olvidan el alcance original, omiten pruebas y auto-aprueban planes incompletos. SpecGuard traslada la verdad del proyecto **de la ventana de contexto al disco**, administrando el ciclo de vida de desarrollo mediante una máquina de estados ACID protegida por locks POSIX y un grafo acíclico dirigido (DAG) de tres fases.
 
 ---
 
-## Instalación
+## 🏗️ Los Pilares de SpecGuard
 
-### 1. Skills & CLI (Uso principal en Antigravity y OpenCode)
+```mermaid
+graph TD
+    subgraph "1. Contrato Universal"
+        AGENTS["AGENTS.md / CLAUDE.md<br/>Directiva única y primacía de reglas"]
+    end
+
+    subgraph "2. FASE PLAN (Contrato Estricto)"
+        DELTA["specs/ (Delta Specs)"]
+        SCOPE["Fuera del Alcance (Out of Scope)<br/>Bloqueante vía sg validate-spec"]
+        CRIT["Criterios Secuenciales<br/>CRIT-01, CRIT-02 [automated/manual]"]
+        GATE{"Compuerta Humana<br/>gate.mode: chat | strict"}
+    end
+
+    subgraph "3. FASE EXECUTE (Cursor de Bajo Consumo)"
+        SESSION["SESSION.md (~250 tokens)<br/>Validación de ancestría Git: merge-base"]
+        TDD["Ciclo TDD (RED -> GREEN -> REFACTOR)<br/>Tests atados a CRIT-XX"]
+        CHECKPOINT["sg session-checkpoint<br/>Actualización atómica en disco"]
+    end
+
+    subgraph "4. FASE VERIFY (Puerta Determinista)"
+        VERIFY_CRIT["sg verify-crit<br/>Auditoría 1:1 de CRIT-XX en tests"]
+        CLEAN_GIT["Git Working Tree Limpio<br/>Commit previo obligatorio"]
+        ARCHIVE["Auto-Archivado del Cambio<br/>Fusión de specs y purga de SESSION.md"]
+    end
+
+    AGENTS --> DELTA & SCOPE & CRIT
+    DELTA & SCOPE & CRIT --> GATE
+    GATE -->|Aprobado| SESSION
+    SESSION --> TDD --> CHECKPOINT
+    CHECKPOINT --> VERIFY_CRIT
+    VERIFY_CRIT --> CLEAN_GIT --> ARCHIVE
+```
+
+### 1. Contrato Universal de Agentes (`AGENTS.md`)
+Inyección no destructiva de bootstrap estandarizada en la raíz del proyecto. Cualquier agente (Claude Code vía `@AGENTS.md` en `CLAUDE.md`, Antigravity vía `GEMINI.md`, OpenCode vía `opencode.jsonc`) asimila de inmediato el estado del DAG antes de interactuar.
+
+### 2. Trazabilidad Determinista de Criterios (`CRIT-XX`)
+Los requerimientos no se redactan en prosa ambigua. Todo cambio define criterios unívocos `CRIT-01`, `CRIT-02` marcados como `[automated]` o `[manual]`. El comando `sg verify-crit` audita el repositorio antes del cierre: **si un criterio automatizable no cuenta con tests en el código, el pase a producción queda bloqueado**.
+
+### 3. Cursor de Sesión de Bajo Consumo (`SESSION.md`)
+Para evitar consumir miles de tokens releyendo planes gigantescos en cada prompt durante la implementación, SpecGuard mantiene un archivo volátil `SESSION.md` (~250 tokens) en la raíz. Incluye validación de ancestría Git (`git merge-base --is-ancestor`) para alertar al instante si el repositorio sufrió rebases o desincronizaciones tras una compactación de contexto.
+
+### 4. Modos de Compuerta Humana Configurables (`chat` vs `strict`)
+El agente **nunca puede auto-aprobarse** para comenzar a modificar código fuente:
+- **Modo `chat` (Predeterminado — Cero Fricción)**:
+  Diseñado para pair-programming interactivo. El agente está obligado a hacer un **STOP** explícito en la conversación, presentar el plan y solicitar tu autorización. Al responder afirmativamente en el chat, el agente ejecuta `sg commit` registrando la aprobación (`plan_approved_by = chat`) sin salir de la conversación.
+- **Modo `strict` (Máxima Seguridad Adversarial)**:
+  Diseñado para agentes autónomos con ejecución de consola desatendida. `sg commit` rechaza la fase con código `EXIT_GATE_REQUIRED (5)` y exige un token criptográfico generado fuera de banda en la terminal física interactiva del humano (`/dev/tty`) mediante `sg plan-approve` y `sg plan-confirm`.
+
+### 5. Motor Transaccional ACID
+Garantiza aislamiento estricto entre fases mediante `BEGIN`, `COMMIT`, `ROLLBACK` y `CHECKPOINT`. Utiliza bloqueos de archivo POSIX (`fcntl`), con caducidad TTL automática y detección de locks estériles (*stale lock recovery*).
+
+---
+
+## 📦 Interfaces del Sistema
+
+SpecGuard se manifiesta según la necesidad de tu entorno:
+
+1. **CLI Unificado (`sg` / `spec-guard`)**: Herramienta de línea de comandos en `$PATH` para humanos y agentes.
+2. **Skill Nativa para Antigravity**: Registrada en `~/.gemini/config/skills/spec-guard/SKILL.md`.
+3. **Sub-Agente y Slash Commands para OpenCode**: Registrado en `opencode.jsonc` con comandos dinámicos (`/init`, `/new`, `/continue`, `/status`, `/checkpoint`, etc.).
+4. **Servidor MCP (`spec-guard-mcp`)**: Herramientas y recursos URI (`spec://{change}/objective`, `spec://{change}/design`) sobre standard I/O para clientes MCP (Claude Desktop, Cursor).
+5. **Daemon de Hooks en Background (`sg hooks-start`)**: Automatización de tareas derivadas (linting, sync de tests) con prohibición hardcodeada de tocar especificaciones.
+
+---
+
+## 🚀 Instalación y Puesta en Marcha
+
+### 1. Instalación Universal en el Sistema
+
+Ejecuta el script de instalación desde la raíz del repositorio:
 
 ```bash
 bash scripts/install.sh
 ```
 
 El instalador:
-1. Copia el paquete canónico `spec_guard` y sus contratos a `~/.agents/skills/spec-guard/`.
-2. Crea los binarios y symlinks globales en `~/.local/bin/sg` y `~/.local/bin/spec-guard`.
-3. Inyecta el contrato de bootstrap en Antigravity (`~/.gemini/GEMINI.md`) y OpenCode (`opencode.jsonc`).
-4. Genera dinámicamente los slash commands (`/init`, `/new`, `/continue`, etc.).
+- Compila e instala el paquete `spec_guard` en `~/.agents/skills/spec-guard/`.
+- Crea los enlaces simbólicos ejecutables en `~/.local/bin/` (`sg`, `spec-guard`, `sg-verify-crit`, `sg-init`).
+- Registra la skill nativa en Antigravity (`~/.gemini/config/skills/spec-guard/SKILL.md`).
+- Configura el agente en OpenCode (`~/.config/opencode/opencode.jsonc`) y genera los slash commands.
+- Inyecta el contrato de arranque en `~/.gemini/GEMINI.md`.
 
-### 2. Servidor MCP (Opcional — Claude Desktop, Cursor, etc.)
+### 2. Inicializar SpecGuard en un Nuevo Repositorio
 
-El servidor MCP permite que cualquier cliente compatible inspeccione el estado de los cambios y lea especificaciones de manera segura. Deliberadamente **no** permite aprobar planes ni forzar transiciones de fase.
-
-**Opción A — zero-install con `uvx`:**
-```json
-{
-  "mcpServers": {
-    "spec-guard": {
-      "command": "uvx",
-      "args": ["git+https://github.com/fdomerlo/state-guard.git"]
-    }
-  }
-}
-```
-
-**Opción B — instalación editable local:**
-```bash
-git clone https://github.com/fdomerlo/state-guard.git ~/.local/share/mcp-servers/spec-guard
-cd ~/.local/share/mcp-servers/spec-guard
-uv venv && uv pip install -e '.[mcp]'
-```
-
-### 3. Agent Hooks (Opcional — automatización de tareas derivadas)
+En cualquier repositorio que quieras gobernar con SpecGuard:
 
 ```bash
-pip install -e '.[hooks]'
+sg init
+# o dentro de una sesión de chat con un agente:
+/init
 ```
 
-Instala las dependencias necesarias (`watchdog`, `pyyaml`) para ejecutar el daemon en segundo plano.
+Esto detectará el stack de tu proyecto y creará:
+- `AGENTS.md` (con enlace en `CLAUDE.md`).
+- `.spec-guard/config.yaml` (configurado por defecto con `gate.mode: chat`).
+- Directorios `.spec-guard/specs/` y `.spec-guard/changes/`.
 
 ---
 
-## Flujo de Trabajo SDD
+## 🔄 Flujo de Trabajo Cotidiano
 
-```mermaid
-graph TD
-    subgraph "1. PLAN"
-        direction TB
-        DRAFT[Borrador: objective.md + design.md] --> VAL[sg validate-spec]
-        VAL --> GATE[Gate Humano Fuera de Banda /dev/tty]
-        GATE --> LOCK[Lock de Especificación Aprobada]
-    end
-
-    subgraph "2. EXECUTE"
-        direction TB
-        TASKS[Desglose: tasks.md] --> IMPL[Implementación TDD guiada por tareas]
-    end
-
-    subgraph "3. VERIFY"
-        direction TB
-        TESTS[Suite de Tests + Verificación de Criterios] --> VERDICT[Veredicto Formal]
-        VERDICT --> ARCHIVE[Auto-Archivado del Cambio]
-    end
-
-    LOCK --> TASKS
-    IMPL --> TESTS
-```
-
-### 1. Iniciar un Cambio
+### Paso 1: Crear un Nuevo Cambio (Fase PLAN)
+En la terminal o en el chat:
 ```bash
-/init                 # Una sola vez por repositorio
-/new agregar-oauth    # Inicia la fase PLAN
+sg begin --change agregar-autenticacion --phase plan
+# o en chat:
+/new agregar-autenticacion
 ```
-El agente investiga la base de código y redacta `objective.md` y `design.md`. Valida la estructura mediante `sg validate-spec`.
+El agente investiga la arquitectura del repositorio y redacta en `.spec-guard/changes/agregar-autenticacion/`:
+- `objective.md`: Contexto, requerimientos y la sección obligatoria **Fuera del Alcance** (*Out of Scope*).
+- `design.md`: Decisiones arquitectónicas y diagrama de componentes.
+- `tasks.md`: Desglose jerárquico de tareas con criterios `CRIT-01`, `CRIT-02` asociados.
 
-### 2. Aprobación Humana del Plan (Gate Fuera de Banda)
-Cuando el plan está completo, el agente se detiene y solicita autorización humana:
+### Paso 2: Validación y Compuerta Humana
+El agente valida la especificación:
 ```bash
-# En tu terminal interactiva:
-sg plan-approve --change agregar-oauth
-# Se genera un código seguro en /dev/tty. Luego confirmas:
-sg plan-confirm --change agregar-oauth --token <CÓDIGO>
-```
-> [!IMPORTANT]
-> El token solo se visualiza en tu terminal interactiva física, impidiendo que un agente autómata se auto-apruebe planes. El token se revoca automáticamente tras 3 intentos fallidos consecutivos.
-
-### 3. Ejecución y Verificación
-```bash
-/continue   # Fase EXECUTE: desglosa tasks.md e implementa el cambio
-/continue   # Fase VERIFY: ejecuta tests, valida contra specs y auto-archiva
+sg validate-spec --change agregar-autenticacion
 ```
 
-Antes de que la fase `verify` archive el cambio, es obligatorio realizar un commit en Git:
-```bash
-git add .
-git commit -m "feat: implementar autenticación OAuth"
-```
+- **En Modo `chat` (Default)**: El agente hace una pausa obligatoria (**STOP**), resume el plan en el chat y solicita confirmación. Tras tu visto bueno, ejecuta el commit a `execute`:
+  ```bash
+  sg commit --change agregar-autenticacion --next-phase execute
+  ```
 
-### Bypass de Emergencia (Hotfix)
-Para responder ante incidentes críticos de producción sin saltear el control humano:
+- **En Modo `strict`**: Si configuraste `gate.mode: strict`, `sg commit` requerirá token interactivo:
+  ```bash
+  # En tu terminal física:
+  sg plan-approve --change agregar-autenticacion
+  sg plan-confirm --change agregar-autenticacion --token <TOKEN>
+  ```
+
+### Paso 3: Implementación con Cursor Ligero (Fase EXECUTE)
+El agente inicia la transacción de ejecución:
 ```bash
-sg hotfix-init --change fix-login --reason "Incidente #402: login bloqueado en prod"
-sg hotfix-confirm --change fix-login --token <CÓDIGO>
+sg begin --change agregar-autenticacion --phase execute
+# o en chat:
+/continue
 ```
+- Se genera en la raíz `SESSION.md` (~250 tokens), registrando el `base_commit` de Git y el cursor de tareas.
+- El agente aplica el ciclo **TDD**: escribe las pruebas nombradas según el criterio (`test_crit_01_login_exitoso`) antes de escribir la implementación.
+- Cada tarea completada actualiza el checkpoint atómicamente:
+  ```bash
+  sg session-checkpoint --change agregar-autenticacion --action "Completada tarea 1.2"
+  ```
+- Al terminar todas las tareas, avanza a verificación:
+  ```bash
+  sg commit --change agregar-autenticacion --next-phase verify
+  ```
+
+### Paso 4: Verificación Determinista y Archivado (Fase VERIFY)
+```bash
+sg begin --change agregar-autenticacion --phase verify
+# o en chat:
+/continue
+```
+1. **Auditoría de Criterios**: Se corre `sg verify-crit --change agregar-autenticacion`. Si algún `CRIT-XX [automated]` no tiene tests en el código fuente, la fase se interrumpe con error.
+2. **Suite de Pruebas y Build**: Se ejecutan los comandos de test y build del proyecto.
+3. **Commit de Git**: El árbol de trabajo debe confirmarse limpiamente en Git (`git commit`).
+4. **Archivado Automático**: Se consolida el cambio en `.spec-guard/changes/archive/`, se fusionan las especificaciones delta en `.spec-guard/specs/` y se elimina `SESSION.md`.
 
 ---
 
-## Comandos del CLI (`sg`)
+## 🛠️ Referencia de Comandos CLI (`sg`)
 
-| Subcomando | Propósito | Entorno Permitido |
+| Subcomando | Descripción | Ámbito |
 |---|---|---|
-| `sg init` | Inicializa la estructura `.spec-guard/` en el repositorio | Agente o Humano |
-| `sg begin --change <c> --phase <p>` | Inicia una transacción ACID para la fase indicada | Agente |
-| `sg commit --change <c>` | Consolida la fase actual y avanza el DAG | Agente |
-| `sg rollback --change <c>` | Revierte la transacción en curso a `idle` | Agente |
-| `sg checkpoint --change <c> --summary <s>` | Guarda un resumen persistente de contexto | Agente |
-| `sg status [--change <c>]` | Inspecciona el estado del grafo transaccional | Agente o Humano |
-| `sg plan-approve --change <c>` | Genera el token de confirmación en `/dev/tty` | **Solo Humano** |
-| `sg plan-confirm --change <c> --token <t>` | Valida el token y aprueba formalmente el plan | **Solo Humano** |
-| `sg hotfix-init --change <c> --reason <r>` | Inicia solicitud de bypass para hotfix | **Solo Humano** |
-| `sg hotfix-confirm --change <c> --token <t>` | Valida y desbloquea el bypass | **Solo Humano** |
-| `sg validate-spec --change <c>` | Valida integridad estructural de los documentos | Agente o Humano |
-| `sg verify-crit --change <c>` | Valida determinísticamente trazabilidad 1:1 de `CRIT-XX` en tests | Agente o Humano |
-| `sg session-checkpoint --change <c> [--action <a>]` | Genera o actualiza atómicamente el cursor `SESSION.md` | Agente o Humano |
-| `sg install-hooks` | Instala hooks de git (ej. post-commit) en el repositorio | Humano |
-| `sg hooks-start` / `status` / `stop` | Gestiona el daemon de observación | Humano |
+| `sg init` | Inicializa `.spec-guard/` y `AGENTS.md` en el proyecto actual | Humano / Agente |
+| `sg begin --change <c> --phase <p>` | Inicia una transacción ACID para la fase (`plan`, `execute`, `verify`) | Agente |
+| `sg commit --change <c> --next-phase <p>` | Confirma la fase actual y avanza el DAG | Agente |
+| `sg rollback --change <c>` | Revierte la transacción activa a estado `idle` | Agente / Humano |
+| `sg checkpoint --change <c> --summary <s>` | Guarda un resumen en `state.ini[Session]` (límite 2000 caracteres) | Agente |
+| `sg status [--change <c>]` | Muestra el estado del grafo transaccional y el cambio activo | Humano / Agente |
+| `sg session-checkpoint --change <c>` | Genera o actualiza el cursor volátil `SESSION.md` validando ancestría Git | Agente |
+| `sg verify-crit --change <c>` | Audita trazabilidad 1:1 de criterios `CRIT-XX` contra suites de test | Agente / Humano |
+| `sg validate-spec --change <c>` | Verifica integridad estructural y presencia obligatoria de *Out of Scope* | Agente / Humano |
+| `sg plan-approve --change <c>` | Emite token de aprobación fuera de banda en `/dev/tty` (modo `strict`) | **Solo Humano** |
+| `sg plan-confirm --change <c> --token <t>` | Valida el token y aprueba el plan (modo `strict`) | **Solo Humano** |
+| `sg hotfix-init --change <c> --reason <r>` | Solicita bypass auditado de hotfix fuera de banda | **Solo Humano** |
+| `sg hotfix-confirm --change <c> --token <t>` | Consume token y desbloquea inicio directo en `execute` | **Solo Humano** |
+| `sg install-hooks` | Instala hooks de Git en el repositorio | Humano |
+| `sg hooks-start` / `status` / `stop` | Administra el observador en background de reglas derivadas | Humano |
 
 ---
 
-## Slash Commands en Orquestadores
+## ⚙️ Configuración (`.spec-guard/config.yaml`)
 
-| Comando | Acción |
-|---|---|
-| `/init` | Inicializa el repositorio para SpecGuard |
-| `/new <nombre>` | Crea un nuevo cambio y abre la fase `plan` |
-| `/continue` | Avanza el cambio a la siguiente fase pendiente |
-| `/ff` | Fast-forward en planificación hasta alcanzar el gate humano |
-| `/status` | Muestra el estado de todos los cambios activos |
-| `/checkpoint` | Guarda un resumen explícito de la sesión en disco |
-| `/rollback` | Purga el cambio actual y restaura archivos vía Git |
-| `/review` | Auditoría estática: compara la implementación contra la spec |
-| `/changelog` | Genera un changelog a partir de cambios archivados |
+```yaml
+schema: spec-driven
 
----
+gate:
+  mode: chat  # 'chat' (default, cero fricción) | 'strict' (fuera de banda /dev/tty)
 
-## Agent Hooks Daemon
-
-Permite automatizar tareas **derivadas** (ej. formateo, sincronización de diagramas o ejecución de linters) ante cambios en el código fuente:
-
-```bash
-cp .spec-guard/hooks.yaml.example .spec-guard/hooks.yaml
-sg hooks-start
+rules:
+  change_naming: kebab-case
+  execute:
+    - Seguir patrones y convenciones existentes del proyecto
+    - Aplicar TDD asociando cada test a un criterio CRIT-XX
+  verify:
+    - build_command: npm test  # o pytest / make test
+    - Criterios CRIT-XX automatizables deben contar con tests
 ```
 
-> [!NOTE]
-> El daemon tiene restricciones inviolables a nivel de código: bajo ninguna circunstancia reacciona ni modifica archivos `objective.md` o `design.md`, preservando la autoridad del desarrollador humano.
-
 ---
 
-## Testing & Verificación
+## 🧪 Pruebas Automatizadas
 
-SpecGuard cuenta con una suite completa de pruebas unitarias y de estrés concurrente (POSIX locking, verificación de gates y protección contra colisiones):
+SpecGuard cuenta con una exhaustiva suite de pruebas unitarias y de estrés concurrente (POSIX locking, mitigación de condiciones de carrera, verificación criptográfica de tokens y validación de modos de compuerta):
 
 ```bash
 python3 tests/run_tests.py
 ```
 
+```text
+Resultados: 50 PASSED, 0 FAILED
+✓ Todas las suites de pruebas completadas con éxito.
+```
+
 ---
 
-## Licencia
+## 📄 Licencia
 
-Distribuido bajo la licencia MIT.
+Distribuido bajo la licencia [MIT](LICENSE).

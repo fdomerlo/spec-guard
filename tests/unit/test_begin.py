@@ -11,7 +11,7 @@ import state_manager
 
 
 def create_mock_change(tmpdir, change_name="test-change", schema_version="2", status="idle", phase="None"):
-    change_dir = os.path.join(tmpdir, ".state-guard", "changes", change_name)
+    change_dir = os.path.join(tmpdir, ".spec-guard", "changes", change_name)
     os.makedirs(change_dir, exist_ok=True)
     state_path = os.path.join(change_dir, "state.ini")
     
@@ -40,7 +40,7 @@ def test_begin_valid_phase(monkeypatch, tmpdir):
     state_manager.cmd_begin(args)
     
     config = configparser.ConfigParser()
-    config.read(os.path.join(tmpdir, ".state-guard", "changes", "test-change", "state.ini"))
+    config.read(os.path.join(tmpdir, ".spec-guard", "changes", "test-change", "state.ini"))
     assert config.get("Transaction", "txn_status") == "in_progress"
     assert config.get("Transaction", "txn_phase") == "plan"
 
@@ -50,7 +50,7 @@ def test_begin_already_in_progress(monkeypatch, tmpdir):
     create_mock_change(str(tmpdir), status="in_progress", phase="plan")
     
     # Pre-create lockfile to simulate active transaction lock
-    lock_file = os.path.join(tmpdir, ".state-guard", "changes", "test-change", ".lock")
+    lock_file = os.path.join(tmpdir, ".spec-guard", "changes", "test-change", ".lock")
     os.makedirs(os.path.dirname(lock_file), exist_ok=True)
     with open(lock_file, "w") as f:
         f.write("active")
@@ -66,7 +66,7 @@ def test_begin_stale_lock_recovery(monkeypatch, tmpdir):
     create_mock_change(str(tmpdir), status="in_progress", phase="plan")
     
     # Set started_at to old timestamp
-    state_path = os.path.join(tmpdir, ".state-guard", "changes", "test-change", "state.ini")
+    state_path = os.path.join(tmpdir, ".spec-guard", "changes", "test-change", "state.ini")
     config = configparser.ConfigParser()
     config.read(state_path)
     config.set("Transaction", "txn_started_at", "2020-01-01T00:00:00")
@@ -89,5 +89,5 @@ def test_begin_auto_migrates_v1_to_v2(monkeypatch, tmpdir):
     state_manager.cmd_begin(args)
     
     config = configparser.ConfigParser()
-    config.read(os.path.join(tmpdir, ".state-guard", "changes", "test-change", "state.ini"))
+    config.read(os.path.join(tmpdir, ".spec-guard", "changes", "test-change", "state.ini"))
     assert config.get("Metadata", "schema_version") == "2"

@@ -19,10 +19,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 SOURCE_SKILLS_DIR="$REPO_DIR/skills"
 SOURCE_PHASES_DIR="$REPO_DIR/phases"
-TARGET_DIR="$HOME/.agents/skills/state-guard"
+TARGET_DIR="$HOME/.agents/skills/spec-guard"
 
-MARKER_START="<!-- state-guard:begin -->"
-MARKER_END="<!-- state-guard:end -->"
+MARKER_START="<!-- spec-guard:begin -->"
+MARKER_END="<!-- spec-guard:end -->"
 
 echo "Iniciando instalación de State Guard..."
 

@@ -29,10 +29,10 @@ Consultar `skills/_shared/convention.md` para el schema de `state.ini`.
 
 ### Paso 1: Encontrar Archivos de Estado
 
-Busca todos los archivos `state.ini` en el directorio `.state-guard/changes/`:
+Busca todos los archivos `state.ini` en el directorio `.spec-guard/changes/`:
 
 ```text
-.state-guard/changes/*/state.ini
+.spec-guard/changes/*/state.ini
 ```
 
 ### Paso 2: Parsear cada State.ini

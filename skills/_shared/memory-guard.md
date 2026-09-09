@@ -105,7 +105,7 @@ lock_state == FREE    y txn_status == idle        → no hay nada que recuperar,
 
 Solo si caíste en el caso `STALE` (segunda fila) seguí con los pasos clásicos:
 
-1. Leé `.state-guard/changes/{change-name}/state.ini` (vía `status`, ya lo hiciste en el Paso 0).
+1. Leé `.spec-guard/changes/{change-name}/state.ini` (vía `status`, ya lo hiciste en el Paso 0).
 2. Verificá si el artefacto de la fase (`txn_phase`) se persistió en disco.
    - Si SÍ → ejecutá COMMIT (la fase se completó pero no se persistió el estado).
    - Si NO → ejecutá ROLLBACK (restaurar `txn_status: idle` sin modificar phases; el middleware libera el lock stale automáticamente al recibir un nuevo `begin`, pero ROLLBACK lo hace explícito y limpio).

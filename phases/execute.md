@@ -114,6 +114,6 @@ Reporta `total`, `completed`, `all_complete`, `last_completed_id`.
 - Marcar las tareas `[x]` en `tasks.md` al completarlas
 - Si el plan es incorrecto/incompleto, ANOTARLO — no desviarse en silencio
 - Si una tarea está bloqueada, DETENERSE y reportar
-- Aplicar cualquier `rules.apply` de `.state-guard/config.yaml`
+- Aplicar cualquier `rules.apply` de `.spec-guard/config.yaml`
 
 > Transacción: BEGIN antes de este contenido, COMMIT al terminar. Ver `_shared/phase-common.md`.

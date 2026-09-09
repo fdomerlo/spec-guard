@@ -11,7 +11,7 @@ import state_manager
 
 
 def create_mock_state(tmpdir, txn_status="in_progress", txn_phase="plan"):
-    change_dir = os.path.join(tmpdir, ".state-guard", "changes", "test-change")
+    change_dir = os.path.join(tmpdir, ".spec-guard", "changes", "test-change")
     os.makedirs(change_dir, exist_ok=True)
     state_path = os.path.join(change_dir, "state.ini")
     

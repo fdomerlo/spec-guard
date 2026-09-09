@@ -11,7 +11,7 @@ import state_manager
 
 
 def create_mock_state(tmpdir, change_name="test-change", txn_status="in_progress", txn_phase="plan", lock_phase="plan", gate_token=None):
-    change_dir = os.path.join(tmpdir, ".state-guard", "changes", change_name)
+    change_dir = os.path.join(tmpdir, ".spec-guard", "changes", change_name)
     os.makedirs(change_dir, exist_ok=True)
     state_path = os.path.join(change_dir, "state.ini")
     
@@ -43,7 +43,7 @@ def test_commit_valid_transition_with_gate(monkeypatch, tmpdir):
     state_manager.cmd_commit(args)
     
     config = configparser.ConfigParser()
-    config.read(os.path.join(tmpdir, ".state-guard", "changes", "test-change", "state.ini"))
+    config.read(os.path.join(tmpdir, ".spec-guard", "changes", "test-change", "state.ini"))
     assert config.get("Transaction", "txn_status") == "idle"
     assert config.get("Graph", "lock_phase") == "execute"
     assert "plan" in config.get("Graph", "completed_phases")

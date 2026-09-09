@@ -56,7 +56,7 @@ def test_sg_hotfix_init_and_confirm_pty(monkeypatch, tmpdir):
     # Check that state.ini was created with lock_phase = execute
     state_path = os.path.join(tmpdir, ".spec-guard", "changes", change_name, "state.ini")
     if not os.path.exists(state_path):
-        state_path = os.path.join(tmpdir, ".state-guard", "changes", change_name, "state.ini")
+        state_path = os.path.join(tmpdir, ".spec-guard", "changes", change_name, "state.ini")
     assert os.path.exists(state_path)
     config = configparser.ConfigParser()
     config.read(state_path)

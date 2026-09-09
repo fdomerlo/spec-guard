@@ -14,10 +14,10 @@ def test_should_skip_excluded_prefixes(monkeypatch, tmpdir):
     monkeypatch.setattr(hook_daemon, "REPO_ROOT", Path(tmpdir))
     handler = hook_daemon.HookHandler([])
     
-    state_guard_path = os.path.join(tmpdir, ".state-guard", "somefile.txt")
+    spec_guard_path = os.path.join(tmpdir, ".spec-guard", "somefile.txt")
     git_path = os.path.join(tmpdir, ".git", "HEAD")
     
-    assert handler._should_skip(state_guard_path) is True
+    assert handler._should_skip(spec_guard_path) is True
     assert handler._should_skip(git_path) is True
 
 

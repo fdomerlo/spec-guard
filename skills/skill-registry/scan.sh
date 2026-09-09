@@ -5,10 +5,10 @@
 
 GLOBAL_DIR="$HOME/.skills-custom"
 LOCAL_DIR="./skills-custom"
-OUTPUT="./.state-guard/skill-registry.md"
+OUTPUT="./.spec-guard/skill-registry.md"
 
 # Crear directorio de salida si no existe
-mkdir -p ./.state-guard
+mkdir -p ./.spec-guard
 
 # Encabezado del índice
 cat > "$OUTPUT" << 'HEADER'

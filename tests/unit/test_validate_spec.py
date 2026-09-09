@@ -9,7 +9,7 @@ import state_manager
 
 
 def setup_change(tmpdir, objective_content=None, design_content=None):
-    change_dir = os.path.join(tmpdir, ".state-guard", "changes", "test-change")
+    change_dir = os.path.join(tmpdir, ".spec-guard", "changes", "test-change")
     os.makedirs(change_dir, exist_ok=True)
     
     if objective_content is not None:

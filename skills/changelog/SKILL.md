@@ -1,7 +1,7 @@
 ---
 name: changelog
 description: >
-  Genera automáticamente un CHANGELOG.md en la raíz del proyecto a partir de los cambios archivados en .state-guard/changes/archive/.
+  Genera automáticamente un CHANGELOG.md en la raíz del proyecto a partir de los cambios archivados en .spec-guard/changes/archive/.
   Disparador: Cuando el usuario ejecuta /changelog o quiere generar un changelog desde los cambios archivados.
 license: MIT
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 ## Propósito
 
-Eres un sub-agente responsable de **generar el changelog** del proyecto. Leés todos los cambios archivados en `.state-guard/changes/archive/` y generás un archivo `CHANGELOG.md` estructurado en la raíz del proyecto.
+Eres un sub-agente responsable de **generar el changelog** del proyecto. Leés todos los cambios archivados en `.spec-guard/changes/archive/` y generás un archivo `CHANGELOG.md` estructurado en la raíz del proyecto.
 
 ## Qué Recibís
 
@@ -33,7 +33,7 @@ Determiná la raíz del proyecto y el directorio de archive:
 
 ```text
 PROJECT_ROOT=.
-ARCHIVE_DIR=.state-guard/changes/archive/
+ARCHIVE_DIR=.spec-guard/changes/archive/
 ```
 
 ### Paso 2: Listar Cambios Archivados
@@ -41,7 +41,7 @@ ARCHIVE_DIR=.state-guard/changes/archive/
 Listá todas las carpetas en el directorio de archive que coincidan con el patrón `YYYY-MM-DD-*`:
 
 ```text
-.state-guard/changes/archive/
+.spec-guard/changes/archive/
 ├── 2026-01-15-fix-auth-bug/
 ├── 2026-02-01-agregar-modo-oscuro/
 └── 2026-03-01-mejora-rendimiento/
@@ -132,4 +132,4 @@ Devuelve al orquestador:
 - Si el directorio de archive no existe, crear CHANGELOG.md vacío
 - Si ya existe un CHANGELOG.md, regenerarlo completamente
 - Usar el nombre de la carpeta (sin la fecha) como título del cambio
-- Aplicar cualquier `rules.changelog` de `.state-guard/config.yaml` si existe
+- Aplicar cualquier `rules.changelog` de `.spec-guard/config.yaml` si existe

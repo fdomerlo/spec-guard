@@ -13,9 +13,9 @@ Al final de VERIFY, si el veredicto es APROBADO, se ejecuta el **paso de archiva
 
 Antes de verificar, leé las dependencias:
 
-1. **Specs delta** — `.state-guard/changes/{change-name}/specs/`
-2. **Plan** — `.state-guard/changes/{change-name}/objective.md` y `design.md`
-3. **Tareas** — `.state-guard/changes/{change-name}/tasks.md`
+1. **Specs delta** — `.spec-guard/changes/{change-name}/specs/`
+2. **Plan** — `.spec-guard/changes/{change-name}/objective.md` y `design.md`
+3. **Tareas** — `.spec-guard/changes/{change-name}/tasks.md`
 
 **REGLA CRÍTICA:** PROHIBIDO cargar `specs/` completo del proyecto. Solo specs delta del cambio activo.
 **REGLA CRÍTICA:** PROHIBIDO buscar en todo el código base. Solo archivos mencionados en las tareas del cambio.
@@ -105,7 +105,7 @@ Detectar el test runner consultando `phases/_shared/test-runner-detection.md`.
 
 ```text
 Detectar comando de build desde:
-├── .state-guard/config.yaml → rules.verify.build_command (máxima prioridad)
+├── .spec-guard/config.yaml → rules.verify.build_command (máxima prioridad)
 ├── package.json → scripts.build → también ejecutar tsc --noEmit si existe tsconfig.json
 ├── pyproject.toml → python -m build o equivalente
 ├── Makefile → make build
@@ -114,7 +114,7 @@ Detectar comando de build desde:
 
 ### Paso 5d: Validación de cobertura (si configurado)
 
-Solo ejecutar si `rules.verify.coverage_threshold` está definido en `.state-guard/config.yaml`.
+Solo ejecutar si `rules.verify.coverage_threshold` está definido en `.spec-guard/config.yaml`.
 
 ### Paso 6: Matriz de Cumplimiento de Specs
 
@@ -135,7 +135,7 @@ PARA CADA REQUISITO en specs/:
 
 ```bash
 # Escribir en disco
-.state-guard/changes/{change-name}/verify-report.md
+.spec-guard/changes/{change-name}/verify-report.md
 ```
 
 Formato:
@@ -210,7 +210,7 @@ git status --porcelain
 
 #### 9.3 Sincronizar specs delta con specs principales
 
-Para cada spec en `.spec-guard/changes/{change-name}/specs/` (o `.state-guard/...`):
+Para cada spec en `.spec-guard/changes/{change-name}/specs/`:
 
 **Si existe la spec principal** (`.spec-guard/specs/{dominio}/spec.md`):
 - Requisitos AGREGADOS → agregar a la spec principal
@@ -271,6 +271,6 @@ Listo para el siguiente cambio.
   - Al fusionar, PRESERVAR los requisitos no mencionados en el delta
   - El archivo es un rastro de auditoría — nunca eliminar ni modificar cambios archivados
   - Si la fusión sería destructiva, ADVERTIR y pedir confirmación
-- Aplicar cualquier `rules.verify` y `rules.archive` de `.state-guard/config.yaml`
+- Aplicar cualquier `rules.verify` y `rules.archive` de `.spec-guard/config.yaml`
 
 > Transacción: BEGIN antes de este contenido, COMMIT al terminar (Paso 8). Ver `_shared/phase-common.md`.

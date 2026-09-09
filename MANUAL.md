@@ -59,7 +59,7 @@ En la ejecución delegada, el sub-agente ejecuta las tareas e interactúa con el
 El sistema incluye un **registry dinámico de skills** que permite el descubrimiento automático de herramientas:
 
 - Script bash POSIX en `skills/skill-registry/scan.sh`
-- Índice generado en `.state-guard/skill-registry.md`
+- Índice generado en `.spec-guard/skill-registry.md`
 - El Memory Guard lee este índice al iniciar para conocer las herramientas disponibles
 
 El registry escanea los directorios global (`$HOME/.skills-custom`) y local (`./skills-custom`), extrayendo nombre, descripción, trigger y ubicación de cada `SKILL.md`.
@@ -84,7 +84,7 @@ Para modelos de frontera como Antigravity CLI y OpenCode, el empaquetador evita 
 El archivo `state.ini` es el núcleo del sistema de estados. Se encuentra en:
 
 ```text
-.state-guard/changes/{nombre-del-cambio}/state.ini
+.spec-guard/changes/{nombre-del-cambio}/state.ini
 ```
 
 **Schema (formato INI, manejado por `state_manager.py`):**
@@ -223,7 +223,7 @@ El comando `sg install-hooks` instala un hook `post-commit` en el repositorio Gi
 ### Ubicación
 
 ```text
-.state-guard/config.yaml
+.spec-guard/config.yaml
 ```
 
 ### Glosario de Configuraciones
@@ -337,7 +337,7 @@ El archivado de un cambio ocurre automáticamente como **Paso 9** dentro de la f
 1. Ejecutar la fase `verify` (`/continue` con `lock_phase=verify`).
 2. Antes de que `verify` pueda archivar, el árbol de trabajo git debe estar limpio — todos los cambios de código commiteados (`git add . && git commit -m "..."`).
 
-El Paso 9 fusiona las specs delta (`changes/{nombre}/specs/`) en las specs principales (`.state-guard/specs/`) y mueve el directorio del cambio a `.state-guard/changes/archive/YYYY-MM-DD-{nombre}/`.
+El Paso 9 fusiona las specs delta (`changes/{nombre}/specs/`) en las specs principales (`.spec-guard/specs/`) y mueve el directorio del cambio a `.spec-guard/changes/archive/YYYY-MM-DD-{nombre}/`.
 
 ### /review — Auditoría Estática
 
@@ -384,7 +384,7 @@ Este comando **elimina permanentemente** todo el trabajo no commiteado en el dir
 ## Estructura de Archivos
 
 ```text
-.state-guard/
+.spec-guard/
 ├── config.yaml                    ← Configuración del proyecto
 ├── skill-registry.md              ← Índice dinámico de skills
 ├── specs/                         ← Specs actuales (fuente de verdad)
@@ -479,11 +479,11 @@ Una vez añadida la skill, el desarrollador (o el sistema) debe registrarla para
 /skill-registry
 ```
 
-Esto escaneará las rutas global y local, y actualizará el archivo de repositorio local en `.state-guard/skill-registry.md`.
+Esto escaneará las rutas global y local, y actualizará el archivo de repositorio local en `.spec-guard/skill-registry.md`.
 
 ### 4. Uso por el Memory Guard
 
-El Memory Guard lee `.state-guard/skill-registry.md` al inicializar contexto y mapea cada entrada como una herramienta ejecutable. Al analizar la necesidad de un usuario, se basará en atributos declarados como `name` y `description` para cargar proactivamente la skill relevante.
+El Memory Guard lee `.spec-guard/skill-registry.md` al inicializar contexto y mapea cada entrada como una herramienta ejecutable. Al analizar la necesidad de un usuario, se basará en atributos declarados como `name` y `description` para cargar proactivamente la skill relevante.
 
 ### Ejemplo Boilerplate (`frontend-design/SKILL.md`)
 
@@ -540,7 +540,7 @@ Agrega el siguiente bloque a tu archivo de configuración de cliente MCP (`claud
     "spec-guard": {
       "command": "uvx",
       "args": [
-        "git+https://github.com/fdomerlo/state-guard.git"
+        "git+https://github.com/fdomerlo/spec-guard.git"
       ]
     }
   }
@@ -552,7 +552,7 @@ Agrega el siguiente bloque a tu archivo de configuración de cliente MCP (`claud
 Clona e instala en modo editable con `uv` o `pip`:
 
 ```bash
-git clone https://github.com/fdomerlo/state-guard.git ~/.local/share/mcp-servers/spec-guard
+git clone https://github.com/fdomerlo/spec-guard.git ~/.local/share/mcp-servers/spec-guard
 cd ~/.local/share/mcp-servers/spec-guard
 uv venv && uv pip install -e '.[mcp]'
 ```

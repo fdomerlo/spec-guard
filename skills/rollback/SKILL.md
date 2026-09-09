@@ -30,7 +30,7 @@ Consultar `skills/_shared/convention.md` para el schema de `state.ini`.
 Buscá el archivo `state.ini` con `status: active` en el directorio:
 
 ```text
-.state-guard/changes/*/state.ini
+.spec-guard/changes/*/state.ini
 ```
 
 Si no existe ningún cambio activo, devolvé un error indicando que no hay cambio activo.
@@ -46,7 +46,7 @@ Mostrá el siguiente mensaje de confirmación:
 ```text
 ⚠️ ¿Estás seguro de revertir el cambio "{nombre}"?
 Esta acción es destructiva y eliminará:
-- La carpeta .state-guard/changes/{nombre}/
+- La carpeta .spec-guard/changes/{nombre}/
 - Cualquier modificación no comprometida en el directorio de trabajo
 
 Escribe "CONFIRMAR" para proceder o cualquier otra cosa para cancelar.
@@ -59,7 +59,7 @@ Si el usuario no confirma, cancelá la operación y salí sin acción.
 Eliminá el directorio:
 
 ```text
-.state-guard/changes/{nombre}/
+.spec-guard/changes/{nombre}/
 ```
 
 ### Paso 5: Restaurar Entorno Git
@@ -82,7 +82,7 @@ Devolvé el resultado en el formato:
 ### detailed_report
 - Cambio revertido: {nombre}
 - Estado: purged & restored
-- Ubicación previa: .state-guard/changes/{nombre}/
+- Ubicación previa: .spec-guard/changes/{nombre}/
 ```
 
 ## Reglas

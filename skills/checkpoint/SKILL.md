@@ -24,7 +24,7 @@ Skill responsable de **generar un checkpoint de sesión de alta fidelidad**. Det
 
 ### Paso 1: Detectar Cambio Activo
 
-Buscar `state.ini` con `status: active` en `.state-guard/changes/*/state.ini`.
+Buscar `state.ini` con `status: active` en `.spec-guard/changes/*/state.ini`.
 
 ### Paso 2: Leer Estado Base
 
@@ -33,7 +33,7 @@ Buscar `state.ini` con `status: active` en `.state-guard/changes/*/state.ini`.
 **No cuentes checkboxes manualmente.** Invocá:
 
 ```text
-state_manager.py check-completion --change {nombre-del-cambio}
+sg check-completion --change {nombre-del-cambio}
 ```
 
 El comando parsea `tasks.md` de forma determinista y devuelve `estado_tareas`, `total`, `completed`, `all_complete`, `last_completed_id`, `last_completed_desc`. Usá el valor de `estado_tareas` tal cual viene — ya tiene el formato `"{X}/{Y} — última: [{ID}] {descripción breve}"`. Si el archivo no existe, devuelve `estado_tareas=N/A` directamente.
@@ -57,7 +57,7 @@ Si existe `design.md`: extraer las primeras 2 decisiones de la sección `## Deci
 Ensamblá el bloque `session_summary` (estado_tareas + archivos_modificados + decisiones_clave) como un único string. **No lo escribas en ningún archivo directamente.** Invocá en terminal:
 
 ```text
-state_manager.py checkpoint --change {nombre-del-cambio} --summary "{bloque generado}"
+sg checkpoint --change {nombre-del-cambio} --summary "{bloque generado}"
 ```
 
 Esperá `SUCCESS|CHECKPOINT` antes de reportar al usuario. Si el comando falla, reportá el error tal cual lo devuelve el middleware — no reintentes editando el archivo como fallback.

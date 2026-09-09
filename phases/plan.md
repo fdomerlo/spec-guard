@@ -52,7 +52,7 @@ Lee los manifiestos encontrados para identificar stack, framework y herramientas
 Para cada dominio afectado, escribe specs delta en:
 
 ```
-.state-guard/changes/{change-name}/specs/{dominio}/spec.md
+.spec-guard/changes/{change-name}/specs/{dominio}/spec.md
 ```
 
 Usa formato Given/When/Then y palabras clave RFC 2119 (MUST, SHALL, SHOULD, MAY).
@@ -76,7 +76,7 @@ Lee el código real afectado antes de diseñar. Documenta:
 Crea los artefactos en disco **antes** de pasar al gate:
 
 ```
-.state-guard/changes/{change-name}/
+.spec-guard/changes/{change-name}/
 ├── objective.md         ← qué y por qué
 ├── design.md            ← cómo, arquitectura, flujo de datos
 └── specs/
@@ -227,6 +227,6 @@ El COMMIT:
 - Las preguntas abiertas bloqueantes (`[!]`) DEBEN resolverse antes de pasar al gate
 - SIEMPRE leer el código real — nunca asumir sobre el código base
 - Los artefactos de propuesta son `objective.md` y `design.md`, cada uno con su propósito específico (ver plantillas). NO fusionarlos en un solo archivo.
-- Aplicar cualquier `rules.plan` de `.state-guard/config.yaml`
+- Aplicar cualquier `rules.plan` de `.spec-guard/config.yaml`
 
 > Transacción: BEGIN antes de Sub-paso 1, COMMIT en Sub-paso 3 (solo tras aprobación humana). Ver `_shared/phase-common.md`.

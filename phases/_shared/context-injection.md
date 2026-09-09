@@ -1,6 +1,6 @@
 # Protocolo de Contexto para Fases
 
-Cada fase del agente tiene reglas de lectura y escritura. Cuando ejecutás una fase inline, leés los artefactos directamente del filesystem (`.state-guard/`). Cuando delegás a un sub-agente, le pasás las **rutas** (no el contenido).
+Cada fase del agente tiene reglas de lectura y escritura. Cuando ejecutás una fase inline, leés los artefactos directamente del filesystem (`.spec-guard/`). Cuando delegás a un sub-agente, le pasás las **rutas** (no el contenido).
 
 ## Dependencias de Contexto por Fase
 

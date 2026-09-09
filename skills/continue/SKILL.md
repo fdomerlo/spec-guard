@@ -23,7 +23,7 @@ Meta-skill responsable de continuar un cambio transaccional existente. Consulta 
 Invocar: state_manager.py status --change {nombre} [--ttl {segundos}]
 ```
 
-Si no hay argumento `{nombre}`, explorar `.state-guard/changes/` para identificar el cambio activo antes de invocar `status`.
+Si no hay argumento `{nombre}`, explorar `.spec-guard/changes/` para identificar el cambio activo antes de invocar `status`.
 
 Si `state.ini` no existe para el cambio → STOP:
 ```

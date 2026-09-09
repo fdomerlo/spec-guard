@@ -11,7 +11,7 @@ import state_manager
 
 
 def create_mock_tasks_file(tmpdir, content):
-    change_dir = os.path.join(tmpdir, ".state-guard", "changes", "test-change")
+    change_dir = os.path.join(tmpdir, ".spec-guard", "changes", "test-change")
     os.makedirs(change_dir, exist_ok=True)
     tasks_path = os.path.join(change_dir, "tasks.md")
     with open(tasks_path, "w", encoding="utf-8") as f:

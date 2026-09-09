@@ -38,7 +38,7 @@ Recibir del orquestador el nombre del cambio a auditar. Determinar la ubicación
 
 ```text
 cambio = {nombre-del-cambio}
-artefactos = .state-guard/changes/{cambio}/
+artefactos = .spec-guard/changes/{cambio}/
 ├── proposal.md      # Propuesta original
 ├── specs/           # Especificaciones (si existen)
 ├── design.md        # Decisiones de diseño
@@ -116,7 +116,7 @@ El reporte debe seguir este formato estructurado:
 
 ### Paso 6: Persistir el Reporte
 
-- **state-guard**: Guardar en `.state-guard/changes/{nombre-del-cambio}/review-report.md`
+- **spec-guard**: Guardar en `.spec-guard/changes/{nombre-del-cambio}/review-report.md`
 - **none**: Devolver el reporte inline
 
 ### Paso 7: Retornar Resultado

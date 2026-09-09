@@ -2,7 +2,7 @@
 name: init
 description: >
   Inicializa el entorno de ejecución con memoria transaccional en cualquier proyecto. Detecta el stack, las convenciones e inicializa el backend de persistencia activo.
-  Disparador: Cuando el usuario quiere inicializar State Guard en un proyecto, o dice "iniciar state-guard", "state-guard init".
+  Disparador: Cuando el usuario quiere inicializar SpecGuard en un proyecto, o dice "iniciar spec-guard", "spec-guard init".
 license: MIT
 metadata:
   author: fdomerlo@gmail.com (136bits)
@@ -34,7 +34,7 @@ Lee el proyecto para entender:
 Crea esta estructura de directorios en la raíz del proyecto:
 
 ```text
-.state-guard/
+.spec-guard/
 ├── config.yaml              ← Configuración del agente específica del proyecto
 ├── specs/                   ← Fuente de verdad (vacía inicialmente)
 └── changes/                 ← Cambios activos
@@ -43,10 +43,10 @@ Crea esta estructura de directorios en la raíz del proyecto:
 
 ### Paso 3: Generar la Configuración
 
-Basándote en lo detectado, crea el archivo `.state-guard/config.yaml`:
+Basándote en lo detectado, crea el archivo `.spec-guard/config.yaml`:
 
 ```yaml
-# .state-guard/config.yaml
+# .spec-guard/config.yaml
 schema: spec-driven
 
 context: |
@@ -87,7 +87,7 @@ rules:
 
 ### Paso 4: Inicializar Registry de Skills
 
-Como paso final, ejecuta `skills/skill-registry/scan.sh` (o inicializa el archivo `.state-guard/skill-registry.md` vacío) para habilitar el descubrimiento de skills.
+Como paso final, ejecuta `skills/skill-registry/scan.sh` (o inicializa el archivo `.spec-guard/skill-registry.md` vacío) para habilitar el descubrimiento de skills.
 
 ### Paso 5: Devolver Resumen
 
@@ -101,9 +101,9 @@ Devuelve un resumen estructurado del estado resultante:
 **Persistencia**: File System (OpenSpec)
 
 ### Estructura Creada
-- .state-guard/config.yaml ← Configuración del proyecto con contexto detectado
-- .state-guard/specs/      ← Listo para especificaciones
-- .state-guard/changes/    ← Listo para propuestas de cambio
+- .spec-guard/config.yaml ← Configuración del proyecto con contexto detectado
+- .spec-guard/specs/      ← Listo para especificaciones
+- .spec-guard/changes/    ← Listo para propuestas de cambio
 
 ### Próximos Pasos
 Listo para /new {nombre-del-cambio}.
@@ -113,5 +113,5 @@ Listo para /new {nombre-del-cambio}.
 
 - NUNCA crear archivos de spec de relleno — las specs se crean mediante spec durante un cambio
 - SIEMPRE detectar el stack tecnológico real, nunca asumir
-- Si el proyecto ya tiene un directorio `.state-guard/`, reportar qué existe y preguntar al orquestador si debe actualizarse
+- Si el proyecto ya tiene un directorio `.spec-guard/`, reportar qué existe y preguntar al orquestador si debe actualizarse
 - Mantener el contexto en `config.yaml` CONCISO — no más de 10 líneas

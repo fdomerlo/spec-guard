@@ -42,7 +42,7 @@ Recibir el nombre del cambio a dividir:
 
 ```text
 cambio = {nombre-del-cambio}
-artefactos = .state-guard/changes/{cambio}/
+artefactos = .spec-guard/changes/{cambio}/
 └── proposal.md      # Proposal original a dividir
 ```
 
@@ -127,7 +127,7 @@ PARA CADA SUB-CAMBIO:
 
 ### Paso 7: Persistir el Plan
 
-- **state-guard**: Guardar en `.state-guard/changes/{nombre-del-cambio}/split-plan.md`
+- **spec-guard**: Guardar en `.spec-guard/changes/{nombre-del-cambio}/split-plan.md`
 - **none**: Devolver el plan inline
 
 ### Paso 8: Retornar Resultado

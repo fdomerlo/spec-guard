@@ -11,7 +11,7 @@ import state_manager
 
 
 def create_v1_state(tmpdir, lock_phase_v1="explore", completed_v1=""):
-    change_dir = os.path.join(tmpdir, ".state-guard", "changes", "test-change")
+    change_dir = os.path.join(tmpdir, ".spec-guard", "changes", "test-change")
     os.makedirs(change_dir, exist_ok=True)
     state_path = os.path.join(change_dir, "state.ini")
     

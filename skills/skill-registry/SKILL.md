@@ -2,7 +2,7 @@
 name: skill-registry
 description: >
   Escanea los directorios de skills personalizados (Global en $HOME/.skills-custom y Local en ./skills-custom) e identifica skills de terceros.
-  Genera un índice en ./.state-guard/skill-registry.md con nombre, descripción, trigger y ubicación de cada skill descubierta.
+  Genera un índice en ./.spec-guard/skill-registry.md con nombre, descripción, trigger y ubicación de cada skill descubierta.
 license: MIT
 metadata:
   author: fdomerlo@gmail.com (136bits)
@@ -40,7 +40,7 @@ El script:
 - Escanea `$HOME/.skills-custom` y `./skills-custom`
 - Ignora directorios que comienzan con `_shared`
 - Extrae nombre, descripción, trigger y ubicación de cada `SKILL.md`
-- Genera el índice en `./.state-guard/skill-registry.md`
+- Genera el índice en `./.spec-guard/skill-registry.md`
 
 ### Paso 2: Devolver Resumen
 
