@@ -38,7 +38,7 @@ def create_mock_state(tmpdir, change_name="test-change", txn_status="in_progress
 def test_commit_valid_transition_with_gate(monkeypatch, tmpdir):
     monkeypatch.chdir(tmpdir)
     create_mock_state(str(tmpdir), txn_phase="plan", gate_token="valid_token")
-    args = Namespace(change="test-change", next_phase="execute")
+    args = Namespace(change="test-change", next_phase="execute", approval_text="Aprobado, dale")
     
     state_manager.cmd_commit(args)
     

@@ -179,11 +179,11 @@ Si deseás solicitar cambios o correcciones, indícalo por este chat.
 ```
 
 3. El modelo **DETIENE SU EJECUCIÓN** inmediatamente (STOP).
-4. Cuando el usuario responde aprobando en el chat, en el siguiente turno el agente ejecuta:
+4. Cuando el usuario responde aprobando en el chat, en el siguiente turno el agente ejecuta, citando el texto exacto de la respuesta del humano (nunca un resumen ni una paráfrasis):
 ```bash
-python3 -m spec_guard.cli commit --change {change-name} --next-phase execute
+python3 -m spec_guard.cli commit --change {change-name} --next-phase execute --approval-text "<respuesta textual del humano>"
 ```
-El comando consolida la fase exitosamente registrando `plan_approved_by = chat`.
+El comando rechaza el commit si `--approval-text` está vacío o no contiene una aprobación reconocible — no alcanza con haber hecho el STOP, el CLI necesita la evidencia. `plan_approved_by` queda registrado con el texto real, no con la palabra `chat`.
 
 ---
 

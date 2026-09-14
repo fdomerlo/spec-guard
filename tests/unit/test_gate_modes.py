@@ -33,14 +33,14 @@ def test_gate_mode_chat_default(monkeypatch, tmpdir):
     # Verificar que el modo por defecto es 'chat'
     assert sm.get_gate_mode("test-gate-change") == "chat"
 
-    # En modo chat, commit de plan -> execute pasa sin exigir token out-of-band
-    args = Namespace(change="test-gate-change", next_phase="execute")
+    # En modo chat, commit de plan -> execute requiere --approval-text válido
+    args = Namespace(change="test-gate-change", next_phase="execute", approval_text="Aprobado")
     sm.cmd_commit(args)
 
     cfg, _ = sm.load_state("test-gate-change")
     assert cfg.get("Graph", "lock_phase") == "execute"
     assert cfg.get("Graph", "current_phase") == "plan"
-    assert cfg.get("Gate", "plan_approved_by") == "chat"
+    assert cfg.get("Gate", "plan_approved_by") == "Aprobado"
     assert cfg.get("Gate", "gate_mode") == "chat"
 
 
