@@ -30,7 +30,8 @@ Resolver problema de prueba
 ### Fuera del Alcance
 - Módulos externos no relacionados
 ## Criterios de Éxito
-- [ ] Test pasa
+- [ ] Test pasa 1
+- [ ] Test pasa 2
 ## Preguntas Abiertas
 - Ninguna
 """

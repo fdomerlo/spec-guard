@@ -139,8 +139,10 @@ def cmd_begin(args):
 
 
 def cmd_commit(args):
-    rc, raw, err = _call_sm(["commit", "--change", args.change,
-                              "--next-phase", args.next_phase])
+    sm_args = ["commit", "--change", args.change, "--next-phase", args.next_phase]
+    if getattr(args, "approval_text", None):
+        sm_args += ["--approval-text", args.approval_text]
+    rc, raw, err = _call_sm(sm_args)
     ok = rc == 0 and "SUCCESS" in raw
     gate_mode = "chat"
     try:
@@ -900,7 +902,7 @@ def cmd_hotfix_confirm(args):
     if rc2 != 0:
         _emit({"ok": False, "error": "BEGIN_FAILED", "message": raw2}, rc2)
 
-    rc3, raw3, _ = _call_sm(["commit", "--change", change, "--next-phase", "execute"])
+    rc3, raw3, _ = _call_sm(["commit", "--change", change, "--next-phase", "execute", "--approval-text", "Aprobado, bypass hotfix"])
     if rc3 != 0:
         _emit({"ok": False, "error": "COMMIT_FAILED", "message": raw3}, rc3)
 
@@ -949,6 +951,8 @@ def build_parser():
     p.add_argument("--next-phase", required=True,
                    choices=["execute", "verify"],
                    dest="next_phase")
+    p.add_argument("--approval-text", default=None,
+                   help="Texto literal de la respuesta del humano (gate de PLAN en modo chat).")
 
     # rollback
     p = sub.add_parser("rollback", help="Revierte la transacción en curso")

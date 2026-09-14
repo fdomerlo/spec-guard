@@ -332,7 +332,9 @@ def cmd_commit(args):
         if expected_next != args.next_phase:
             print(
                 f"ERROR: Transición inválida. Desde '{phase}' el DAG solo permite "
-                f"'{expected_next}', no '{args.next_phase}'."
+                f"'{expected_next}', no '{args.next_phase}'.\n"
+                f"       Ejecutá en cambio: sg commit --change {args.change} "
+                f"--next-phase {expected_next}"
             )
             sys.exit(EXIT_BAD_TRANSITION)
 
@@ -351,12 +353,32 @@ def cmd_commit(args):
                     )
                     sys.exit(EXIT_GATE_REQUIRED)
             else:
-                # Modo chat (default): El agente ya realizó STOP mandatorio en chat.
-                # Se autoriza la promoción registrando metadatos en [Gate].
+                # Modo chat (default): el gate se verifica contra el texto real de la
+                # respuesta del humano, no contra la palabra del agente. No se acepta
+                # ningún resumen ni paráfrasis — tiene que ser la respuesta citada tal
+                # cual, para que quede como registro auditable en [Gate].
+                approval_text = (args.approval_text or "").strip()
+                if not approval_text:
+                    print(
+                        "ERROR: GATE — El commit de 'plan' en modo chat requiere "
+                        "--approval-text con la respuesta literal del humano.\n"
+                        "       Ejemplo: sg commit --change "
+                        f"{args.change} --next-phase execute "
+                        '--approval-text "Aprobado, avanzá con la implementación"'
+                    )
+                    sys.exit(EXIT_GATE_REQUIRED)
+                if not re.search(r"aprob|approved?|\bok\b|dale|confirmo|proced",
+                                  approval_text, re.IGNORECASE):
+                    print(
+                        "ERROR: GATE — El texto en --approval-text no contiene una "
+                        "aprobación reconocible. Pegá la respuesta real del humano, "
+                        "no la resumas ni la inventes."
+                    )
+                    sys.exit(EXIT_GATE_REQUIRED)
                 if not config.has_section("Gate"):
                     config.add_section("Gate")
                 config.set("Gate", "plan_approved_at", datetime.now().isoformat())
-                config.set("Gate", "plan_approved_by", "chat")
+                config.set("Gate", "plan_approved_by", approval_text)
                 config.set("Gate", "gate_mode", "chat")
         # ── FIN GATE ENFORCEMENT ────────────────────────────────────────────
 
@@ -655,6 +677,17 @@ def cmd_next_task(args):
     print(json.dumps({"status": "ALL_COMPLETE", "task": None}))
 
 
+def _section_body(content: str, header: str) -> str:
+    """Devuelve el texto de una sección Markdown hasta el próximo header del mismo nivel."""
+    idx = content.find(header)
+    if idx == -1:
+        return ""
+    level = len(header) - len(header.lstrip("#"))
+    rest = content[idx + len(header):]
+    m = re.search(r"^#{1," + str(level) + r"}\s", rest, re.MULTILINE)
+    return rest[:m.start()] if m else rest
+
+
 def cmd_validate_spec(args):
     change_dir = resolve_change_dir(args.change)
     objective_path = change_dir / "objective.md"
@@ -688,6 +721,15 @@ def cmd_validate_spec(args):
                     "issue": "MISSING_OUT_OF_SCOPE",
                     "detail": "Falta definir explícitamente qué queda fuera de alcance (Out of scope)."
                 })
+            criterios_body = _section_body(content, "## Criterios de Éxito")
+            bullet_count = len(re.findall(r"^\s*(?:[-*]|\d+\.)\s+\S", criterios_body, re.MULTILINE))
+            if bullet_count < 2:
+                issues.append({
+                    "file": label,
+                    "issue": "INSUFFICIENT_SUBSTANCE",
+                    "detail": f"'## Criterios de Éxito' tiene {bullet_count} ítem(s) enumerados — "
+                              "se esperan al menos 2 criterios concretos, no una frase suelta."
+                })
 
     result = {"ok": len(issues) == 0, "change": args.change, "issues": issues}
     print(json.dumps(result, ensure_ascii=False))
@@ -710,6 +752,9 @@ def main():
     p_commit = subparsers.add_parser("commit")
     p_commit.add_argument("--change", required=True)
     p_commit.add_argument("--next-phase", required=True)
+    p_commit.add_argument("--approval-text", default=None,
+                           help="Texto literal de la respuesta del humano en el chat "
+                                "(obligatorio para el gate de PLAN en modo chat).")
 
     # rollback
     p_rollback = subparsers.add_parser("rollback")
