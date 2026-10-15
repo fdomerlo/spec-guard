@@ -9,111 +9,58 @@ metadata:
   version: "2.0"
 ---
 
-# Init Skill
+# Init Skill (2-File Root Protocol)
 
 ## Propósito
 
-Eres un sub-agente responsable de **inicializar el entorno con memoria transaccional** en un proyecto. Detectas el stack tecnológico y las convenciones del proyecto, y luego inicializas el backend de persistencia activo.
-
-## Referencia
-
-No cargues `skills/_shared/convention.md` por adelantado. Abrilo solo si
-necesitás verificar un campo específico del schema de `state.ini` que no
-te quede claro por el propio comportamiento del CLI.
+Inicializar SpecGuard en el repositorio bajo el **2-File Root Protocol**: establece `requirements.md` (PRD) y `design.md` (SAD) como fuentes de verdad en la raíz del proyecto, configura contratos `AGENTS.md` y `CLAUDE.md`, y prepara la infraestructura transaccional `.spec-guard/`.
 
 ## Qué Hacer
 
-### Paso 1: Detectar el Contexto del Proyecto
+### Paso 1: Ejecutar `sg init`
 
-Lee el proyecto para entender:
+Ejecutá el comando determinista de inicialización:
 
-- Stack tecnológico (revisa `package.json`, `go.mod`, `pyproject.toml`, etc.)
-- Convenciones existentes (linters, frameworks de testing, CI)
-- Patrones de arquitectura en uso
-
-### Paso 2: Inicializar la Estructura OpenSpec
-
-Crea esta estructura de directorios en la raíz del proyecto:
-
-```text
-.spec-guard/
-├── config.yaml              ← Configuración del agente específica del proyecto
-├── specs/                   ← Fuente de verdad (vacía inicialmente)
-└── changes/                 ← Cambios activos
-    └── archive/             ← Cambios completados
+```bash
+sg init
+# o: python3 -m spec_guard.cli init
 ```
 
-### Paso 3: Generar la Configuración
+Esto garantiza:
+- Creación de plantillas raíz si no existen: `requirements.md` y `design.md` con el stack precargado y placeholders limpios.
+- Instalación de contratos del agente: `AGENTS.md` y `CLAUDE.md` en la raíz.
+- Estructura `.spec-guard/` con `config.yaml` y `.spec-guard/bin/verify-crit.sh`.
 
-Basándote en lo detectado, crea el archivo `.spec-guard/config.yaml`:
+### Paso 2: Entrevista Inicial de Definición (Opcional pero recomendada)
 
-```yaml
-# .spec-guard/config.yaml
-schema: spec-driven
+Si el proyecto es nuevo o los documentos raíz recién se crearon con placeholders:
+1. Ofrecé una breve entrevista guiada por dudas (`phases/_shared/spec-intake.md`) para definir:
+   - **Visión General (`requirements.md §1`):** Problema central y objetivo principal.
+   - **Glosario Estricto (`requirements.md §2`):** Las 2 o 3 entidades nodales del dominio con sus sinónimos prohibidos.
+   - **Stack Obligatorio (`design.md §1`):** Confirmar motor de base de datos y dependencias iniciales.
+2. Reemplazá los placeholders `{...}` en los documentos raíz con las respuestas del usuario.
 
-context: |
-  Stack tecnológico: {stack detectado}
-  Arquitectura: {patrones detectados}
-  Testing: {framework de testing detectado}
-  Estilo: {linting/formateo detectado}
+### Paso 3: Validación de Arranque
 
-rules:
-  change_naming: kebab-case
-  proposal:
-    - Incluir plan de rollback para cambios riesgosos
-    - Identificar módulos/paquetes afectados
-  specs:
-    - Usar formato Given/When/Then para escenarios
-    - Usar palabras clave RFC 2119 (MUST, SHALL, SHOULD, MAY)
-  design:
-    - Incluir diagramas de secuencia para flujos complejos
-    - Documentar decisiones de arquitectura con justificación
-    - "[!] Si proposal.md marca el riesgo como Medio/Alto, DEBES incluir una Estrategia de Testing rigurosa."
-  tasks:
-    - Agrupar tareas por fase (infraestructura, implementación, testing)
-    - Usar numeración jerárquica (1.1, 1.2, etc.)
-    - Mantener tareas pequeñas, completables en una sesión
-  execute:
-    - Seguir los patrones y convenciones de código existentes
-    - "Código Defensivo y Pragmatismo: Aplica principios SOLID, DRY y Clean Code. Prefiere Early Returns (Guard Clauses). NUNCA sobre-ingeniar."
-  verify:
-    - Comparar la implementación contra cada escenario de spec
-    - Advertir antes de fusionar deltas destructivos (eliminaciones grandes en archivado)
+Verificá que las especificaciones iniciales sean coherentes:
 
-# Glosario de términos del dominio (opcional)
-# glossary:
-#   terms:
-#     - term: "Artefacto"
-#       definition: "Archivo generado por una fase del agente (proposal, spec, design, tasks)"
+```bash
+sg context
+sg validate-spec
 ```
 
-### Paso 4: Inicializar Registry de Skills
+### Paso 4: Devolver Resumen
 
-Como paso final, ejecuta `skills/skill-registry/scan.sh` (o inicializa el archivo `.spec-guard/skill-registry.md` vacío) para habilitar el descubrimiento de skills.
-
-### Paso 5: Devolver Resumen
-
-Devuelve un resumen estructurado del estado resultante:
+Informá al usuario que el proyecto está listo para trabajar:
 
 ```text
-## State Guard Inicializado
+## SpecGuard Inicializado (2-File Root Protocol)
 
 **Proyecto**: {nombre del proyecto}
-**Stack**: {stack detectado}
-**Persistencia**: File System (OpenSpec)
+**Fuentes de Verdad**:
+- `requirements.md` (PRD: Visión, Glosario, Roles, RFs)
+- `design.md` (SAD: Stack obligatorio, Modelo, Endpoints, Reglas)
 
-### Estructura Creada
-- .spec-guard/config.yaml ← Configuración del proyecto con contexto detectado
-- .spec-guard/specs/      ← Listo para especificaciones
-- .spec-guard/changes/    ← Listo para propuestas de cambio
-
-### Próximos Pasos
-Listo para /new {nombre-del-cambio}.
+Listo para recibir requerimientos: podés iniciar tu primer cambio con `/new {nombre-del-cambio}` o plantear una funcionalidad en lenguaje natural.
 ```
 
-## Reglas
-
-- NUNCA crear archivos de spec de relleno — las specs se crean mediante spec durante un cambio
-- SIEMPRE detectar el stack tecnológico real, nunca asumir
-- Si el proyecto ya tiene un directorio `.spec-guard/`, reportar qué existe y preguntar al orquestador si debe actualizarse
-- Mantener el contexto en `config.yaml` CONCISO — no más de 10 líneas

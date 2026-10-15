@@ -31,6 +31,7 @@ __all__ = [
     "tokenize_identifiers",
     "audit_forbidden_synonyms",
     "build_project_context",
+    "next_rf_id",
 ]
 
 # Section keyword sets (accent/case-insensitive, ES/EN).
@@ -354,4 +355,33 @@ def build_project_context(root_dir: Path) -> dict:
             ],
         },
     }
+
+
+def next_rf_id(requirements_text: str, module_prefix: str = None) -> str:
+    """Calculate the next available sequential RF ID (e.g. RF-103).
+
+    If module_prefix is provided (e.g. 'RF-200' or '200'), returns the next ID
+    within that hundred-range (e.g. RF-201, RF-202).
+    If no RFs exist, defaults to RF-101 (or RF-X01 for module).
+    """
+    clean_text = strip_html_comments(requirements_text)
+    rfs = parse_rfs(clean_text)
+    nums = []
+    for r in rfs:
+        m = re.search(r'RF-(\d+)', r.get("id", ""))
+        if m:
+            nums.append(int(m.group(1)))
+
+    if module_prefix:
+        m = re.search(r'\d+', module_prefix)
+        if m:
+            base_hundred = (int(m.group(0)) // 100) * 100
+            module_nums = [n for n in nums if base_hundred < n < base_hundred + 100]
+            next_num = max(module_nums) + 1 if module_nums else base_hundred + 1
+            return f"RF-{next_num}"
+
+    if nums:
+        return f"RF-{max(nums) + 1}"
+    return "RF-101"
+
 

@@ -15,9 +15,19 @@ El lock es el evento que cierra PLAN y habilita EXECUTE. **El modelo NO puede em
 
 ## Qué Hacer
 
+### Sub-paso 0: INTAKE & DOUBT-DRIVEN INTERVIEW (Entrevista Guiada por la Duda)
+
+Si el cambio se origina en un pedido en lenguaje natural crudo o con requerimientos no consolidados:
+1. Consultá `phases/_shared/spec-intake.md`.
+2. Ejecutá `sg context` para contrastar contra el Glosario Estricto, Stack Obligatorio y Fuera del Alcance.
+3. Si hay ambigüedades, formulá hasta 7 preguntas numeradas con opciones recomendadas `(Recomendada)`.
+4. **STOP OBLIGATORIO:** Queda terminantemente PROHIBIDO inventar requerimientos, asumir decisiones no confirmadas o generar código antes de recibir las respuestas del usuario.
+5. Tras las respuestas, calculá `sg next-rf-id`, redactá el `RF-XXX` en `requirements.md` y los contratos en `design.md`.
+
 ### Sub-paso 1: DRAFT — Generar el plan
 
 Investiga, analiza y produce el borrador del plan. Este paso es ejecutado por el LLM.
+
 
 #### 1.0 Token Anchoring & Stack Obligatorio
 

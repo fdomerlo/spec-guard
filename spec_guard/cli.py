@@ -857,6 +857,17 @@ def cmd_glossary_check(args):
     }, exit_code)
 
 
+def cmd_next_rf_id(args):
+    """Calcula deterministamente el siguiente ID secuencial de RF."""
+    from spec_guard.core import root_docs
+    root_dir = Path(args.root) if getattr(args, "root", None) else REPO_ROOT
+    req_file = root_dir / "requirements.md"
+    text = req_file.read_text(encoding="utf-8") if req_file.exists() else ""
+    text = root_docs.strip_html_comments(text)
+    next_id = root_docs.next_rf_id(text, module_prefix=getattr(args, "module", None))
+    _emit({"ok": True, "next_rf_id": next_id}, 0)
+
+
 def cmd_list_changes(args):
     if not CHANGES_DIR.exists():
         _emit({"ok": True, "changes": []})
@@ -1385,6 +1396,11 @@ def build_parser():
     p.add_argument("--diff", action="store_true", help="Auditar solo el diff de git (comportamiento por defecto)")
     p.add_argument("--strict", action="store_true", help="Falla (exit 4) incluso ante WARNINGs")
 
+    # next-rf-id
+    p = sub.add_parser("next-rf-id", help="Calcula el siguiente ID secuencial disponible de RF")
+    p.add_argument("--root", help="Ruta al repositorio raíz (por defecto cwd)")
+    p.add_argument("--module", help="Prefijo o módulo base (ej: RF-100, RF-200)")
+
     return parser
 
 
@@ -1408,6 +1424,7 @@ DISPATCH = {
     "mark-rf": cmd_mark_rf,
     "context": cmd_context,
     "glossary-check": cmd_glossary_check,
+    "next-rf-id": cmd_next_rf_id,
     "list-changes": cmd_list_changes,
     "install-hooks": cmd_install_hooks,
     "hooks-start": cmd_hooks_start,
