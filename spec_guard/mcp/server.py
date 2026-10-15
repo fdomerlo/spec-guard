@@ -74,6 +74,29 @@ def get_rf_status(change: str = "") -> dict:
     return result
 
 
+@mcp.tool()
+def get_project_context(root: str = "") -> dict:
+    """Proyección JSON compacta del contexto del proyecto desde requirements.md y design.md (glosario, stack, roles, out of scope, progreso de RFs)."""
+    args = ["context"] + (["--root", root] if root else [])
+    result, _ = _sg(*args)
+    return result
+
+
+@mcp.tool()
+def check_glossary(change: str = "", paths: str = "", strict: bool = False) -> dict:
+    """Audita archivos o el diff del change en busca de sinónimos prohibidos del glosario estricto de requirements.md."""
+    args = ["glossary-check"]
+    if change:
+        args.extend(["--change", change])
+    if paths:
+        args.extend(["--paths", *paths.split()])
+    if strict:
+        args.append("--strict")
+    result, _ = _sg(*args)
+    return result
+
+
+
 def _read_root_doc(name: str) -> str:
     cwd = Path.cwd()
     for parent in [cwd, *cwd.parents]:

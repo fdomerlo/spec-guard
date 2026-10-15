@@ -19,7 +19,15 @@ El lock es el evento que cierra PLAN y habilita EXECUTE. **El modelo NO puede em
 
 Investiga, analiza y produce el borrador del plan. Este paso es ejecutado por el LLM.
 
+#### 1.0 Token Anchoring & Stack Obligatorio
+
+En proyectos bajo el 2-File Root Protocol (`requirements.md` / `design.md`):
+- Ejecutá `sg context` para asimilar el glosario estricto y las restricciones del stack.
+- **Glosario:** Los requerimientos funcionales (`RF-XXX`) y criterios deben usar exclusivamente los términos permitidos. Si surge un nuevo concepto de negocio, incorporalo primero a la tabla de Glosario en `requirements.md §2`.
+- **Stack:** Queda prohibido proponer tecnologías o librerías fuera de `design.md §1 (Stack Obligatorio)` sin aprobación explícita.
+
 #### 1.1 Auto-descubrimiento del stack
+
 
 Antes de analizar, entiende el entorno físico:
 

@@ -28,6 +28,9 @@ __all__ = [
     "find_placeholders",
     "set_rf_checked",
     "crit_matches",
+    "tokenize_identifiers",
+    "audit_forbidden_synonyms",
+    "build_project_context",
 ]
 
 # Section keyword sets (accent/case-insensitive, ES/EN).
@@ -221,3 +224,134 @@ def crit_matches(crit_id: str, line: str) -> bool:
     core = "crit" + "".join(r"[-_]" + n for n in numbers)
     pattern = r"(?<![a-z0-9])" + core + r"(?![0-9])(?![-_][0-9])"
     return re.search(pattern, line, re.IGNORECASE) is not None
+
+
+# ─── Context Anchoring and Glossary Check ────────────────────────────────────
+
+def tokenize_identifiers(text: str) -> list:
+    """Tokenize text into lowercase words, splitting snake_case, camelCase and PascalCase."""
+    spaced = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', text)
+    spaced = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', spaced)
+    normalized = unicodedata.normalize("NFKD", spaced)
+    folded = "".join(c for c in normalized if not unicodedata.combining(c)).lower()
+    return re.findall(r'[a-z0-9]+', folded)
+
+
+def audit_forbidden_synonyms(text: str, glossary: list, line_offset: int = 1) -> list:
+    """Audit text against forbidden synonyms in glossary.
+
+    Returns a list of violations:
+      {
+        "line": int,
+        "term": str,
+        "forbidden": str,
+        "canonical": str,
+        "severity": "CRITICAL" | "WARNING",
+        "line_text": str
+      }
+    CRITICAL if the violation occurs in a class/entity definition (class <Term>),
+    WARNING otherwise.
+    """
+    violations = []
+    if not glossary:
+        return violations
+
+    for idx, raw_line in enumerate(text.splitlines(), start=line_offset):
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        line_tokens = tokenize_identifiers(line)
+        if not line_tokens:
+            continue
+
+        class_m = re.search(r'^\s*class\s+([A-Za-z0-9_]+)', raw_line)
+        is_class_def = bool(class_m)
+        class_name_tokens = tokenize_identifiers(class_m.group(1)) if is_class_def else []
+
+        for entry in glossary:
+            canonical_tokens = tokenize_identifiers(entry.get("term", ""))
+            masked_indices = set()
+            if canonical_tokens:
+                m = len(canonical_tokens)
+                for i in range(len(line_tokens) - m + 1):
+                    if line_tokens[i:i+m] == canonical_tokens:
+                        for k in range(m):
+                            masked_indices.add(i + k)
+
+            for forbidden_str in entry.get("forbidden", []):
+                forbidden_tokens = tokenize_identifiers(forbidden_str)
+                if not forbidden_tokens:
+                    continue
+                m = len(forbidden_tokens)
+                for i in range(len(line_tokens) - m + 1):
+                    if line_tokens[i:i+m] == forbidden_tokens:
+                        if any((i + k) in masked_indices for k in range(m)):
+                            continue  # Part of canonical term
+
+                        in_class_name = False
+                        if is_class_def and len(class_name_tokens) >= m:
+                            for j in range(len(class_name_tokens) - m + 1):
+                                if class_name_tokens[j:j+m] == forbidden_tokens:
+                                    in_class_name = True
+                                    break
+
+                        severity = "CRITICAL" if in_class_name else "WARNING"
+                        violations.append({
+                            "line": idx,
+                            "term": " ".join(line_tokens[i:i+m]),
+                            "forbidden": forbidden_str,
+                            "canonical": entry.get("term", ""),
+                            "severity": severity,
+                            "line_text": line,
+                        })
+
+    return violations
+
+
+def build_project_context(root_dir: Path) -> dict:
+    """Extract structured compact context from repository root documents."""
+    root_dir = Path(root_dir)
+    req_file = root_dir / "requirements.md"
+    des_file = root_dir / "design.md"
+
+    if not req_file.exists():
+        return {
+            "mode": "legacy",
+            "glossary": [],
+            "stack": "",
+            "roles": "",
+            "out_of_scope": "",
+            "rf_progress": {"total": 0, "done": 0, "pending": 0, "rfs": []},
+        }
+
+    req_text = strip_html_comments(req_file.read_text(encoding="utf-8"))
+    des_text = strip_html_comments(des_file.read_text(encoding="utf-8")) if des_file.exists() else ""
+
+    glossary = parse_glossary(req_text)
+    stack = section_body(des_text, DESIGN_SECTIONS["stack"])
+    roles = section_body(req_text, REQUIREMENTS_SECTIONS["roles"])
+    out_of_scope = section_body(req_text, REQUIREMENTS_SECTIONS["out_of_scope"])
+
+    rfs = parse_rfs(req_text)
+    total_rf = len(rfs)
+    done_rf = len([r for r in rfs if r["checked"]])
+    pending_rf = total_rf - done_rf
+
+    return {
+        "mode": "root",
+        "glossary": glossary,
+        "stack": stack.strip() if stack else "",
+        "roles": roles.strip() if roles else "",
+        "out_of_scope": out_of_scope.strip() if out_of_scope else "",
+        "rf_progress": {
+            "total": total_rf,
+            "done": done_rf,
+            "pending": pending_rf,
+            "rfs": [
+                {"id": r["id"], "title": r["title"], "checked": r["checked"]}
+                for r in rfs
+            ],
+        },
+    }
+

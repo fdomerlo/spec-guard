@@ -60,6 +60,32 @@ verify-crit:
 
 **REGLA CRÍTICA:** Si `verify-crit` retorna código de salida 2 o detecta criterios automatizables sin trazabilidad en tests, el veredicto es **RECHAZADO** (CRITICAL). La fase no puede aprobarse ni archivarse con criterios de aceptación huérfanos.
 
+### Paso 2c: Verificación de Glosario y Stack (Token Anchoring)
+
+Auditar que no se hayan introducido sinónimos prohibidos del glosario ni dependencias fuera del stack obligatorio:
+
+```bash
+python3 -m spec_guard.cli glossary-check --change {change-name}
+```
+
+```text
+glossary-check:
+├── Compara archivos modificados contra el Glosario Estricto de requirements.md
+├── Clasifica violaciones:
+│   ├── CRITICAL (exit code 4): sinónimo prohibido usado en class/entidad
+│   └── WARNING: sinónimo prohibido en comentarios o código general
+└── Si exit code == 4 (CRITICAL) → Veredicto RECHAZADO (BLOQUEANTE)
+```
+
+Verificar también que los manifiestos de dependencias (`pyproject.toml`, `requirements.txt`, `package.json`) no incluyan nuevas dependencias fuera de `design.md §1 (Stack Tecnológico Obligatorio)`.
+
+### Paso 2d: Definition of Done y Checklist de Seguridad
+
+Para cambios que introduzcan endpoints, lógica de negocio o esquemas, contrastar con las referencias condensadas en `phases/_shared/`:
+- `phases/_shared/definition-of-done.md`: barra permanente de calidad y completitud.
+- `phases/_shared/security-checklist.md`: validación de entradas, auth, secrets y OWASP.
+
+
 ### Paso 3: Verificar Corrección (coincidencia con specs)
 
 ```text

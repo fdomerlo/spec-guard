@@ -738,6 +738,125 @@ def cmd_mark_rf(args):
            "message": f"{rf_id} marcado como completado en requirements.md."})
 
 
+def cmd_context(args):
+    """Emite la proyección JSON compacta del contexto del proyecto desde los documentos raíz."""
+    from spec_guard.core import root_docs
+    root_dir = Path(args.root) if getattr(args, "root", None) else REPO_ROOT
+    ctx = root_docs.build_project_context(root_dir)
+    _emit(ctx, 0)
+
+
+def cmd_glossary_check(args):
+    """
+    Audita archivos o el diff del change en busca de sinónimos prohibidos del glosario.
+    Sale con exit code 4 si se encuentran violaciones CRITICAL (o si --strict y hay WARNINGs).
+    """
+    from spec_guard.core import root_docs
+
+    root_dir = Path(args.root) if getattr(args, "root", None) else REPO_ROOT
+    req_file = root_dir / "requirements.md"
+    if not req_file.exists():
+        _emit({"ok": True, "message": "No requirements.md found; skipping glossary check.", "violations": []}, 0)
+
+    req_text = root_docs.strip_html_comments(req_file.read_text(encoding="utf-8"))
+    glossary = root_docs.parse_glossary(req_text)
+    if not glossary:
+        _emit({"ok": True, "message": "Glossary is empty; 0 violations.", "violations": []}, 0)
+
+    paths_to_check = []
+    if getattr(args, "paths", None):
+        for p in args.paths:
+            path_obj = Path(p)
+            if not path_obj.is_absolute():
+                path_obj = root_dir / path_obj
+            if path_obj.is_file():
+                paths_to_check.append(path_obj)
+            elif path_obj.is_dir():
+                for sub in path_obj.rglob("*"):
+                    if sub.is_file() and not any(part.startswith(".") for part in sub.parts):
+                        paths_to_check.append(sub)
+    else:
+        # Diff mode (default)
+        base_commit = getattr(args, "base_commit", None)
+        if not base_commit:
+            change = getattr(args, "change", None) or _active_change()
+            if change:
+                state_file = _find_guard_dir(root_dir) / "changes" / change / "state.ini"
+                if state_file.exists():
+                    cfg = configparser.ConfigParser()
+                    cfg.read(state_file, encoding="utf-8")
+                    base_commit = cfg.get("Transaction", "base_commit", fallback=None)
+
+        cmd = ["git", "diff", "--name-only"]
+        if base_commit:
+            cmd.append(base_commit)
+        try:
+            res = subprocess.run(cmd, cwd=str(root_dir), capture_output=True, text=True)
+            if res.returncode == 0:
+                rel_paths = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+                for rel in rel_paths:
+                    p = root_dir / rel
+                    if p.is_file():
+                        paths_to_check.append(p)
+        except Exception:
+            pass
+
+        # If no changed files or git failed, check untracked or existing source files in src/tests
+        if not paths_to_check:
+            for d in ["src", "tests", "test", "app"]:
+                pdir = root_dir / d
+                if pdir.exists():
+                    for f in pdir.rglob("*.py"):
+                        paths_to_check.append(f)
+
+    # Exclude root requirements.md, design.md, and .spec-guard/ files from glossary violation checking
+    filtered_paths = []
+    for p in paths_to_check:
+        try:
+            rel = p.resolve().relative_to(root_dir.resolve())
+            rel_str = str(rel)
+            if rel_str in ("requirements.md", "design.md") or rel_str.startswith(".spec-guard"):
+                continue
+            filtered_paths.append(p)
+        except ValueError:
+            filtered_paths.append(p)
+
+    all_violations = []
+    critical_count = 0
+    warning_count = 0
+
+    for fpath in filtered_paths:
+        try:
+            content = fpath.read_text(encoding="utf-8", errors="ignore")
+            violations = root_docs.audit_forbidden_synonyms(content, glossary)
+            try:
+                rel = str(fpath.relative_to(root_dir))
+            except ValueError:
+                rel = str(fpath)
+            for v in violations:
+                v["file"] = rel
+                if v["severity"] == "CRITICAL":
+                    critical_count += 1
+                else:
+                    warning_count += 1
+                all_violations.append(v)
+        except Exception:
+            pass
+
+    has_critical = critical_count > 0
+    strict_fail = getattr(args, "strict", False) and len(all_violations) > 0
+    failed = has_critical or strict_fail
+
+    exit_code = 4 if failed else 0
+    _emit({
+        "ok": not failed,
+        "critical_count": critical_count,
+        "warning_count": warning_count,
+        "violations": all_violations,
+        "message": f"{critical_count} CRITICAL, {warning_count} WARNING violations." if all_violations else "0 violations.",
+    }, exit_code)
+
+
 def cmd_list_changes(args):
     if not CHANGES_DIR.exists():
         _emit({"ok": True, "changes": []})
@@ -1253,6 +1372,19 @@ def build_parser():
     p.add_argument("--change", required=True)
     p.add_argument("--token", required=True, help="Código de confirmación mostrado por hotfix-init en /dev/tty")
 
+    # context
+    p = sub.add_parser("context", help="Proyección JSON compacta del contexto del proyecto desde los documentos raíz")
+    p.add_argument("--root", help="Ruta al repositorio raíz (por defecto cwd)")
+
+    # glossary-check
+    p = sub.add_parser("glossary-check", help="Audita archivos o el diff del change buscando sinónimos prohibidos del glosario")
+    p.add_argument("--root", help="Ruta al repositorio raíz (por defecto cwd)")
+    p.add_argument("--change", help="Nombre del change para consultar su base_commit")
+    p.add_argument("--base-commit", help="Commit base para el diff")
+    p.add_argument("--paths", nargs="*", help="Archivos o directorios específicos a auditar")
+    p.add_argument("--diff", action="store_true", help="Auditar solo el diff de git (comportamiento por defecto)")
+    p.add_argument("--strict", action="store_true", help="Falla (exit 4) incluso ante WARNINGs")
+
     return parser
 
 
@@ -1274,6 +1406,8 @@ DISPATCH = {
     "init-change": cmd_init_change,
     "rf-status": cmd_rf_status,
     "mark-rf": cmd_mark_rf,
+    "context": cmd_context,
+    "glossary-check": cmd_glossary_check,
     "list-changes": cmd_list_changes,
     "install-hooks": cmd_install_hooks,
     "hooks-start": cmd_hooks_start,

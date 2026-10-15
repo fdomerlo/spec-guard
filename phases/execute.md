@@ -64,10 +64,12 @@ Para cada tarea con criterio automatizado `CRIT-XX`:
 1. **RED**: Escribir la prueba unitaria o de integración cuyo nombre incluya la etiqueta exacta (`test('CRIT-01: ...')` o `def test_crit_01_...()`). Confirmar que FALLA.
 2. **GREEN**: Implementar el código mínimo de producción para que la prueba PASE.
 3. **REFACTOR**: Limpiar el código sin alterar comportamiento. Confirmar suite en verde.
-4. **CHECKPOINT**: Marcar tarea en `tasks.md` (`sg mark-task`) y actualizar el cursor:
+4. **GLOSSARY CHECK**: Ejecutar `sg glossary-check --change {change-name}` para confirmar que las entidades y código nuevo no introducen sinónimos prohibidos del glosario.
+5. **CHECKPOINT**: Marcar tarea en `tasks.md` (`sg mark-task`) y actualizar el cursor:
    ```bash
    sg session-checkpoint --change {change-name} --action "Siguiente tarea" --completed "CRIT-XX implementado"
    ```
+
 
 > CRÍTICO: Ejecutar tests con una terminal real. PROHIBIDO simular o inferir resultados.
 

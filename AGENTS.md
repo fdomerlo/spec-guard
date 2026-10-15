@@ -8,8 +8,11 @@
 - Code, comments, error messages, and commit messages: **English**. Chat with the human: user's preferred language.
 - Atomic commits, one concern each, conventional-commit messages: `feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert`.
 - Always run automated test suite before your first change in a session and after every logical unit. Never leave the suite red at a commit boundary.
-- Never hand-edit generated or state files — use `sg` CLI commands for state transitions (`begin`, `commit`, `rollback`, `checkpoint`, `status`, `next-task`, `verify-gate`, `mark-task`, `verify-crit`, `session-checkpoint`).
-- No new dependencies without explicit human approval.
+- Never hand-edit generated or state files — use `sg` CLI commands for state transitions (`begin`, `commit`, `rollback`, `checkpoint`, `status`, `next-task`, `verify-gate`, `mark-task`, `verify-crit`, `session-checkpoint`, `context`, `glossary-check`).
+- **Token Anchoring:** Strictly adhere to the strict glossary (`requirements.md §2`). Forbidden synonyms are prohibited in code, tests, and comments (`sg glossary-check`).
+- **Stack Compliance:** Strictly adhere to the mandatory tech stack (`design.md §1`). No new dependencies without explicit human approval.
+- **Read-First Ignition:** On session start, assimilate project rules via `sg context` before generating any code.
+
 
 ## Specification-Driven Development (SDD) Lifecycle
 
