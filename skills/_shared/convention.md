@@ -26,7 +26,7 @@
 ```
 
 `.lock` y `.write-lock` son artefactos internos del middleware — nunca se referencian desde una skill ni se leen directamente.
-`SESSION.md` es el cursor de ejecución de ultra-bajo consumo de tokens (~250 tokens). Se escribe atómicamente y se ancla también en la raíz del repo durante la fase `execute` para que las iteraciones de desarrollo no tengan que releer el macro-contrato completo.
+`SESSION.md` es el cursor de ejecución de ultra-bajo consumo de tokens (~250 tokens). Se escribe atómicamente en `.spec-guard/SESSION.md` (nunca en la raíz del repo) durante la fase `execute` para que las iteraciones de desarrollo no tengan que releer el macro-contrato completo.
 
 ## Rutas de Artefactos por Skill
 

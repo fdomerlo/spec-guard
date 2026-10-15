@@ -15,13 +15,13 @@ Para garantizar el **mínimo consumo de tokens**, la fase EXECUTE opera en dos n
 
 1. **Arranque inicial de la fase (solo la primera vez):**
    - Leer `tasks.md` (o generarlo en el Paso 2 si no existe).
-   - Inicializar el cursor liviano `SESSION.md` (~250 tokens) en la raíz del repo:
+   - Inicializar el cursor liviano `.spec-guard/SESSION.md` (~250 tokens):
      ```bash
      sg session-checkpoint --change {change-name} --action "Comenzar primera tarea"
      ```
 2. **Iteraciones sucesivas durante EXECUTE (regla de bajo consumo):**
    - **PROHIBIDO releer `objective.md` y `design.md` completos en cada ciclo.**
-   - El agente lee **únicamente `SESSION.md`** y los archivos de código y test involucrados en la tarea inmediata.
+   - El agente lee **únicamente `.spec-guard/SESSION.md`** y los archivos de código y test involucrados en la tarea inmediata.
    - Verificar integridad de Git:
      ```bash
      git merge-base --is-ancestor <base-commit> HEAD

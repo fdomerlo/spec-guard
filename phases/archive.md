@@ -24,9 +24,23 @@ git status --porcelain
 - Salida vacía → repositorio limpio, continuar
 - Salida no vacía → BLOQUEAR el archivado y exigir commit al usuario
 
-### 3. Sincronizar specs delta con specs principales
+### 3. Cerrar requerimientos / sincronizar specs
 
-Para cada spec en `.spec-guard/changes/{change-name}/specs/`:
+Detectá el modo del change: si `.spec-guard/changes/{change-name}/objective.md`
+existe → **legacy**; si no (change con `[Scope] rf_ids`) → **raíz**.
+
+**Modo raíz (2-File Root Protocol)** — `requirements.md` es la fuente de verdad,
+no hay specs delta que fusionar. Por cada RF del scope (`sg rf-status --change {change-name}`):
+
+```bash
+sg mark-rf --change {change-name} --rf RF-XXX
+```
+
+`mark-rf` solo marca `[x]` (RF y sus criterios) si `lock_phase=verify`, el RF
+está en el scope y `verify-crit` no tiene fallas. Si rechaza (exit 2/3/4),
+ABORTAR el archivado y reportar. Nunca edites los checkbox de la raíz a mano.
+
+**Modo legacy** — para cada spec en `.spec-guard/changes/{change-name}/specs/`:
 
 **Si existe la spec principal** (`.spec-guard/specs/{dominio}/spec.md`):
 - Requisitos AGREGADOS → agregar a la spec principal
@@ -40,13 +54,12 @@ Para cada spec en `.spec-guard/changes/{change-name}/specs/`:
 
 ### 4. Mover al archivo y limpiar sesión (SESSION.md)
 
-1. **Archivado del cursor de sesión**: Si existe `SESSION.md` en la raíz del
-   repositorio:
-   - Copiar o mover `SESSION.md` a
-     `.spec-guard/changes/{change-name}/SESSION.md` como registro histórico
-     de la ejecución.
-   - Eliminar `SESSION.md` de la raíz del repositorio (`rm -f SESSION.md`)
-     para dejar el espacio de trabajo limpio para futuros cambios.
+1. **Archivado del cursor de sesión**: Si existe `.spec-guard/SESSION.md`:
+   - Copiarlo a `.spec-guard/changes/{change-name}/SESSION.md` como registro
+     histórico de la ejecución.
+   - Eliminar `.spec-guard/SESSION.md` (`rm -f .spec-guard/SESSION.md`) para
+     dejar el cursor limpio para futuros cambios. Si quedara un `SESSION.md`
+     legacy en la raíz del repositorio, eliminarlo también.
 
 2. **Mover directorio del cambio al archivo**:
 ```text
@@ -63,9 +76,9 @@ Usar la fecha de hoy en formato ISO.
 
 **Cambio**: {change-name}
 **Archivado en**: .spec-guard/changes/archive/{YYYY-MM-DD}-{change-name}/
-**Cursor SESSION.md**: Archivado y limpiado de la raíz
+**Cursor SESSION.md**: Archivado y limpiado de `.spec-guard/`
 
-### Specs Sincronizadas
+### RF Cerrados (modo raíz) / Specs Sincronizadas (modo legacy)
 | Dominio   | Acción             | Detalles                                       |
 |-----------|--------------------|------------------------------------------------|
 | {dominio} | Creado/Actualizado | {N agregados, M modificados, K eliminados}     |
@@ -78,7 +91,8 @@ Listo para el siguiente cambio.
 ## Reglas
 
 - NUNCA archivar si `verify-report.md` contiene issues CRITICAL
-- SIEMPRE verificar git status antes de sincronizar specs
+- SIEMPRE verificar git status antes de cerrar RF o sincronizar specs
+- En modo raíz, los RF se cierran SOLO con `sg mark-rf` (nunca editando `requirements.md` a mano)
 - Al fusionar, PRESERVAR los requisitos no mencionados en el delta
 - El archivo es un rastro de auditoría — nunca eliminar ni modificar
   cambios archivados

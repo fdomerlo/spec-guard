@@ -50,7 +50,7 @@ Inyección no destructiva de bootstrap estandarizada en la raíz del proyecto. C
 Los requerimientos no se redactan en prosa ambigua. Todo cambio define criterios unívocos `CRIT-01`, `CRIT-02` marcados como `[automated]` o `[manual]`. El comando `sg verify-crit` audita el repositorio antes del cierre: **si un criterio automatizable no cuenta con tests en el código, el pase a producción queda bloqueado**.
 
 ### 3. Cursor de Sesión de Bajo Consumo (`SESSION.md`)
-Para evitar consumir miles de tokens releyendo planes gigantescos en cada prompt durante la implementación, SpecGuard mantiene un archivo volátil `SESSION.md` (~250 tokens) en la raíz. Incluye validación de ancestría Git (`git merge-base --is-ancestor`) para alertar al instante si el repositorio sufrió rebases o desincronizaciones tras una compactación de contexto.
+Para evitar consumir miles de tokens releyendo planes gigantescos en cada prompt durante la implementación, SpecGuard mantiene un archivo volátil `.spec-guard/SESSION.md` (~250 tokens), fuera de la raíz del proyecto. Incluye validación de ancestría Git (`git merge-base --is-ancestor`) para alertar al instante si el repositorio sufrió rebases o desincronizaciones tras una compactación de contexto.
 
 ### 4. Modos de Compuerta Humana Configurables (`chat` vs `strict`)
 El agente **nunca puede auto-aprobarse** para comenzar a modificar código fuente:
@@ -149,7 +149,7 @@ sg begin --change agregar-autenticacion --phase execute
 # o en chat:
 /continue
 ```
-- Se genera en la raíz `SESSION.md` (~250 tokens), registrando el `base_commit` de Git y el cursor de tareas.
+- Se genera `.spec-guard/SESSION.md` (~250 tokens), registrando el `base_commit` de Git y el cursor de tareas.
 - El agente aplica el ciclo **TDD**: escribe las pruebas nombradas según el criterio (`test_crit_01_login_exitoso`) antes de escribir la implementación.
 - Cada tarea completada actualiza el checkpoint atómicamente:
   ```bash
@@ -169,7 +169,7 @@ sg begin --change agregar-autenticacion --phase verify
 1. **Auditoría de Criterios**: Se corre `sg verify-crit --change agregar-autenticacion`. Si algún `CRIT-XX [automated]` no tiene tests en el código fuente, la fase se interrumpe con error.
 2. **Suite de Pruebas y Build**: Se ejecutan los comandos de test y build del proyecto.
 3. **Commit de Git**: El árbol de trabajo debe confirmarse limpiamente en Git (`git commit`).
-4. **Archivado Automático**: Se consolida el cambio en `.spec-guard/changes/archive/`, se fusionan las especificaciones delta en `.spec-guard/specs/` y se elimina `SESSION.md`.
+4. **Archivado Automático**: Se consolida el cambio en `.spec-guard/changes/archive/`, se fusionan las especificaciones delta en `.spec-guard/specs/` y se elimina `.spec-guard/SESSION.md`.
 
 ---
 
@@ -183,7 +183,10 @@ sg begin --change agregar-autenticacion --phase verify
 | `sg rollback --change <c>` | Revierte la transacción activa a estado `idle` | Agente / Humano |
 | `sg checkpoint --change <c> --summary <s>` | Guarda un resumen en `state.ini[Session]` (límite 2000 caracteres) | Agente |
 | `sg status [--change <c>]` | Muestra el estado del grafo transaccional y el cambio activo | Humano / Agente |
-| `sg session-checkpoint --change <c>` | Genera o actualiza el cursor volátil `SESSION.md` validando ancestría Git | Agente |
+| `sg session-checkpoint --change <c>` | Genera o actualiza el cursor volátil `.spec-guard/SESSION.md` validando ancestría Git | Agente |
+| `sg init-change --change <c> --rf RF-101` | Crea el change y fija su scope de RF (modo raíz) | Agente |
+| `sg rf-status [--change <c>]` | Estado de los RF de `requirements.md` (totales, pendientes, scope) | Agente |
+| `sg mark-rf --change <c> --rf RF-101` | Cierra un RF: solo en VERIFY, dentro del scope y con CRIT cubiertos | Agente |
 | `sg verify-crit --change <c>` | Audita trazabilidad 1:1 de criterios `CRIT-XX` contra suites de test | Agente / Humano |
 | `sg validate-spec --change <c>` | Verifica integridad estructural y presencia obligatoria de *Out of Scope* | Agente / Humano |
 | `sg plan-approve --change <c>` | Emite token de aprobación fuera de banda en `/dev/tty` (modo `strict`) | **Solo Humano** |

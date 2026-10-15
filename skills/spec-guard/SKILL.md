@@ -38,7 +38,7 @@ PLAN --plan-approve + plan-confirm (human /dev/tty)--> EXECUTE --tasks done + TD
        in their interactive physical terminal (`/dev/tty`).
 
 3. **Low-Token Execution & Session Checkpoint (`SESSION.md`)**:
-   - During `EXECUTE`, operate with the lightweight cursor `SESSION.md` (~250 tokens) at repository root. Do not reload massive specification files in every turn.
+   - During `EXECUTE`, operate with the lightweight cursor `.spec-guard/SESSION.md` (~250 tokens). Do not reload massive specification files in every turn.
    - Always verify Git ancestry: `git merge-base --is-ancestor <base-commit> HEAD`.
    - Run `sg session-checkpoint --change <name> --action "..."` to record atomic progress.
    - Maintain TDD discipline: RED (failing test with `CRIT-XX`) -> GREEN (implementation) -> REFACTOR.
@@ -49,19 +49,22 @@ PLAN --plan-approve + plan-confirm (human /dev/tty)--> EXECUTE --tasks done + TD
      sg verify-crit --change <name>
      ```
    - If any automated criterion lacks a matching test in `tests/`, `test/`, `spec/`, or `src/`, `verify-crit` exits with code 2. The phase CANNOT be approved with orphaned criteria.
-   - On approved verdict, the change is archived to `.spec-guard/changes/archive/YYYY-MM-DD-{name}/` and `SESSION.md` is removed from repository root.
+   - On approved verdict, the change is archived to `.spec-guard/changes/archive/YYYY-MM-DD-{name}/` and `.spec-guard/SESSION.md` is removed.
 
 ## CLI Commands Quick Reference
 
 | Command | Purpose | Allowed Caller |
 |---------|---------|----------------|
-| `sg init [--force]` | Initialize `.spec-guard/`, `AGENTS.md`, `CLAUDE.md`, `scripts/verify-crit.sh` | Agent or Human |
+| `sg init [--force]` | Initialize `.spec-guard/` (incl. `bin/verify-crit.sh`), `AGENTS.md`, `CLAUDE.md` and root `requirements.md` / `design.md` (never overwritten) | Agent or Human |
 | `sg status [--change <c>]` | Inspect active phase, lock status, and pending tasks | Agent or Human |
 | `sg begin --change <c> --phase <p>` | Start ACID transaction for phase (`plan`, `execute`, `verify`) | Agent |
 | `sg commit --change <c> --next-phase <p>` | Commit phase and advance DAG (exits 5 if gate required) | Agent |
 | `sg rollback --change <c>` | Roll back in-progress transaction to idle | Agent |
 | `sg checkpoint --change <c> --summary "..."` | Save persistent session summary block | Agent |
-| `sg session-checkpoint --change <c> [--action <a>]` | Atomically update low-token `SESSION.md` cursor | Agent |
+| `sg session-checkpoint --change <c> [--action <a>]` | Atomically update low-token `.spec-guard/SESSION.md` cursor | Agent |
+| `sg init-change --change <c> --rf RF-101` | Create a change scoped to root RFs | Agent |
+| `sg rf-status [--change <c>]` | RF status from root `requirements.md` (totals, pending, scope) | Agent |
+| `sg mark-rf --change <c> --rf RF-101` | Close an RF: VERIFY only, in scope, all CRIT covered | Agent |
 | `sg verify-crit --change <c>` | Deterministic audit of 1:1 `CRIT-XX` test traceability | Agent or Human |
 | `sg validate-spec --change <c>` | Check structural validity and out-of-scope in specs | Agent or Human |
 | `sg plan-approve` / `plan-confirm` | Human approval gate out-of-band via `/dev/tty` | **HUMAN ONLY** |

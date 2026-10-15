@@ -44,7 +44,7 @@ Invocar el validador determinista de criterios de aceptación:
 ```bash
 python3 -m spec_guard.cli verify-crit --change {change-name}
 # o alternativamente:
-./scripts/verify-crit.sh {change-name}
+.spec-guard/bin/verify-crit.sh {change-name}
 ```
 
 ```text
