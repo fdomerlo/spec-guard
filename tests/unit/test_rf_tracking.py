@@ -51,6 +51,51 @@ def test_crit_16_verify_crit_rejects_prefix_false_positive(tmpdir):
     assert out["failures"] == 1
 
 
+def test_crit_16_verify_crit_ignores_fenced_code_blocks_and_comments(tmpdir):
+    project = Path(str(tmpdir))
+    change_dir = project / ".spec-guard" / "changes" / "legacy"
+    change_dir.mkdir(parents=True)
+    (change_dir / "tasks.md").write_text("- [ ] CRIT-99: Tarea real\n", encoding="utf-8")
+    (change_dir / "design.md").write_text(
+        "# Design\n```markdown\n- [ ] CRIT-101-1 [automated]: Ejemplo en bloque de codigo\n```\n"
+        "<!-- - [ ] CRIT-101-2: Ejemplo en comentario -->\n",
+        encoding="utf-8",
+    )
+    _write_tests(project, "def test_crit_99_real(): pass\n")
+    rc, out = run_cli(project, "verify-crit", "--change", "legacy")
+    assert rc == 0, out
+    crit_ids = [c["id"] for c in out["criteria"]]
+    assert crit_ids == ["CRIT-99"]
+
+
+def test_crit_16_verify_crit_tag_precision_and_location_priority(tmpdir):
+    project = Path(str(tmpdir))
+    change_dir = project / ".spec-guard" / "changes" / "legacy"
+    change_dir.mkdir(parents=True)
+    tasks = (
+        "- [ ] CRIT-98: Asegura que reconoce [manual] como texto en la descripcion\n"
+        "- [ ] CRIT-97 [manual]: Tarea con prefix bracket\n"
+        "- [ ] CRIT-96: (manual) Tarea con prefix paren\n"
+        "- [ ] CRIT-95: Tarea con suffix (manual)\n"
+    )
+    (change_dir / "tasks.md").write_text(tasks, encoding="utf-8")
+    tests_body = (
+        '"""Docstring mentioning CRIT-98 at top of file"""\n'
+        "\n"
+        "def test_crit_98_auto(): pass\n"
+    )
+    _write_tests(project, tests_body)
+    rc, out = run_cli(project, "verify-crit", "--change", "legacy")
+    assert rc == 0, out
+    by_id = {c["id"]: c for c in out["criteria"]}
+    assert by_id["CRIT-98"]["type"] == "automated"
+    assert by_id["CRIT-98"]["location"].endswith(":3")
+    assert by_id["CRIT-97"]["type"] == "manual"
+    assert by_id["CRIT-96"]["type"] == "manual"
+    assert by_id["CRIT-95"]["type"] == "manual"
+
+
+
 def test_crit_17_rf_status_reports_totals(tmpdir):
     project = Path(str(tmpdir))
     write_root_project(project, rf_ids="RF-101")

@@ -252,20 +252,30 @@ def _audit_criteria(change: str, change_dir: Path) -> dict:
     """
     from spec_guard.core import root_docs
 
-    crit_pattern = re.compile(r'-\s*\[([ xX])\]\s*(CRIT-[0-9]+(?:-[0-9]+)?)[:\s]*(.*)')
+    crit_pattern = re.compile(
+        r'-\s*\[([ xX])\]\s*(?:\[[A-Za-z0-9_-]+\]\s*)?(CRIT-[0-9]+(?:-[0-9]+)?)\s*(?::?\s*(?:\[(automated|manual)\]|\((automated|manual)\)))?\s*:?\s*(.*)',
+        re.IGNORECASE,
+    )
     criteria_map = {}
 
     for fname in ["tasks.md", "design.md", "objective.md"]:
         fpath = change_dir / fname
         if fpath.exists():
             content = fpath.read_text(encoding="utf-8")
-            for line in content.splitlines():
+            clean_content = root_docs.strip_html_comments(content)
+            clean_content = re.sub(r"```.*?```|~~~.*?~~~", "", clean_content, flags=re.DOTALL)
+            for line in clean_content.splitlines():
                 m = crit_pattern.search(line)
                 if m:
                     crit_id = m.group(2)
-                    desc = m.group(3).strip()
-                    lowered = desc.lower()
-                    is_manual = "(manual)" in lowered or "[manual]" in lowered
+                    kind = (m.group(3) or m.group(4) or "").lower()
+                    desc = m.group(5).strip()
+                    if not kind:
+                        suff_m = re.search(r'(?:\[(automated|manual)\]|\((automated|manual)\))\s*$', desc, re.IGNORECASE)
+                        if suff_m:
+                            kind = (suff_m.group(1) or suff_m.group(2)).lower()
+                            desc = desc[:suff_m.start()].strip()
+                    is_manual = (kind == "manual")
                     if crit_id not in criteria_map:
                         criteria_map[crit_id] = {
                             "id": crit_id,
@@ -293,6 +303,14 @@ def _audit_criteria(change: str, change_dir: Path) -> dict:
                         "rf": rf["id"],
                     })
 
+    def _test_priority(match_line: str) -> int:
+        body = match_line.split(":", 2)[-1].strip().lower()
+        if any(body.startswith(p) for p in ("def test_", "async def test_", "test(", "it(", "describe(")):
+            return 0
+        if any(k in body for k in ("def test_", "test(")):
+            return 1
+        return 2
+
     failures = 0
     results = []
     for crit_id in sorted(criteria_map.keys()):
@@ -307,6 +325,7 @@ def _audit_criteria(change: str, change_dir: Path) -> dict:
                 and root_docs.crit_matches(crit_id, l)
             ]
             if code_matches:
+                code_matches.sort(key=_test_priority)
                 first = code_matches[0]
                 loc = first.split(":", 2)[:2]
                 location_str = ":".join(loc)
