@@ -11,6 +11,7 @@ import configparser
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -305,10 +306,14 @@ def cmd_begin(args):
         config.set("Transaction", "txn_phase", args.phase)
         config.set("Transaction", "txn_started_at", datetime.now().isoformat())
         try:
-            res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=str(REPO_ROOT))
+            res = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True,
+                cwd=str(Path(path).resolve().parent),
+            )
             if res.returncode == 0 and res.stdout.strip():
                 config.set("Transaction", "base_commit", res.stdout.strip())
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
         save_state(config, path)
         print(f"SUCCESS|BEGIN transaccional iniciado para fase: {args.phase}")

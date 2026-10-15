@@ -970,7 +970,29 @@ def build_parser():
     # mark-task
     p = sub.add_parser("mark-task", help="Marca una tarea como completada por ID (JSON)")
     p.add_argument("--change", required=True)
-      # validate-spec
+    p.add_argument("--task-id", required=True, dest="task_id")
+
+    # next-task
+    p = sub.add_parser("next-task", help="Próxima tarea pendiente de tasks.md (JSON)")
+    p.add_argument("--change", required=True)
+
+    # verify-gate
+    p = sub.add_parser("verify-gate", help="Verifica si la fase está autorizada por el DAG")
+    p.add_argument("--change", required=True)
+    p.add_argument("--phase", required=True, choices=["plan", "execute", "verify"])
+
+    # migrate
+    p = sub.add_parser("migrate", help="Migra un state.ini v1 (8 fases) a v2 (3 fases)")
+    p.add_argument("--change", required=True)
+
+    # init-change
+    p = sub.add_parser("init-change", help="Crea un nuevo change con state.ini en lock_phase=plan")
+    p.add_argument("--change", required=True)
+
+    # list-changes
+    sub.add_parser("list-changes", help="Lista los changes activos (excluye archive/)")
+
+    # validate-spec
     p = sub.add_parser("validate-spec", help="Valida la estructura de objective.md y design.md")
     p.add_argument("--change", required=True)
 
@@ -1032,37 +1054,38 @@ def build_parser():
     return parser
 
 
+DISPATCH = {
+    "init": cmd_init,
+    "status": cmd_status,
+    "begin": cmd_begin,
+    "commit": cmd_commit,
+    "rollback": cmd_rollback,
+    "checkpoint": cmd_checkpoint,
+    "check-completion": cmd_check_completion,
+    "mark-task": cmd_mark_task,
+    "next-task": cmd_next_task,
+    "verify-gate": cmd_verify_gate,
+    "migrate": cmd_migrate,
+    "validate-spec": cmd_validate_spec,
+    "verify-crit": cmd_verify_crit,
+    "session-checkpoint": cmd_session_checkpoint,
+    "init-change": cmd_init_change,
+    "list-changes": cmd_list_changes,
+    "install-hooks": cmd_install_hooks,
+    "hooks-start": cmd_hooks_start,
+    "hooks-stop": cmd_hooks_stop,
+    "hooks-status": cmd_hooks_status,
+    "plan-approve": cmd_plan_approve,
+    "plan-confirm": cmd_plan_confirm,
+    "hotfix-init": cmd_hotfix_init,
+    "hotfix-confirm": cmd_hotfix_confirm,
+}
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
-
-    dispatch = {
-        "init": cmd_init,
-        "status": cmd_status,
-        "begin": cmd_begin,
-        "commit": cmd_commit,
-        "rollback": cmd_rollback,
-        "checkpoint": cmd_checkpoint,
-        "check-completion": cmd_check_completion,
-        "mark-task": cmd_mark_task,
-        "next-task": cmd_next_task,
-        "verify-gate": cmd_verify_gate,
-        "migrate": cmd_migrate,
-        "validate-spec": cmd_validate_spec,
-        "verify-crit": cmd_verify_crit,
-        "session-checkpoint": cmd_session_checkpoint,
-        "init-change": cmd_init_change,
-        "list-changes": cmd_list_changes,
-        "install-hooks": cmd_install_hooks,
-        "hooks-start": cmd_hooks_start,
-        "hooks-stop": cmd_hooks_stop,
-        "hooks-status": cmd_hooks_status,
-        "plan-approve": cmd_plan_approve,
-        "plan-confirm": cmd_plan_confirm,
-        "hotfix-init": cmd_hotfix_init,
-        "hotfix-confirm": cmd_hotfix_confirm,
-    }
-    dispatch[args.command](args)
+    DISPATCH[args.command](args)
 
 
 if __name__ == "__main__":
