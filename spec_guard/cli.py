@@ -244,20 +244,15 @@ def _search_pattern_in_tests(repo_root: Path, pattern: str) -> list[str]:
     return matches
 
 
-def cmd_verify_crit(args):
-    """
-    Audita deterministamente la trazabilidad 1:1 de criterios CRIT-XX en tests.
-    Extrae criterios de tasks.md, design.md y objective.md, y verifica que para cada
-    criterio automatizado exista una prueba en el código que contenga su identificador.
-    """
-    import re
-    change = args.change
-    guard_dir = _find_guard_dir(REPO_ROOT)
-    change_dir = guard_dir / "changes" / change
-    if not change_dir.exists():
-        _emit({"ok": False, "change": change, "message": f"El change '{change}' no existe."}, 1)
+def _audit_criteria(change: str, change_dir: Path) -> dict:
+    """Audita la trazabilidad CRIT-XX de un change. Devuelve results/failures sin emitir.
 
-    crit_pattern = re.compile(r'-\s*\[([ xX])\]\s*(CRIT-[0-9]+)[:\s]*(.*)')
+    Fuentes: tasks.md, design.md y objective.md del change y, en modo raíz, los
+    criterios de los RF del [Scope] declarados en <raíz>/requirements.md.
+    """
+    from spec_guard.core import root_docs
+
+    crit_pattern = re.compile(r'-\s*\[([ xX])\]\s*(CRIT-[0-9]+(?:-[0-9]+)?)[:\s]*(.*)')
     criteria_map = {}
 
     for fname in ["tasks.md", "design.md", "objective.md"]:
@@ -269,7 +264,8 @@ def cmd_verify_crit(args):
                 if m:
                     crit_id = m.group(2)
                     desc = m.group(3).strip()
-                    is_manual = "(manual)" in desc.lower()
+                    lowered = desc.lower()
+                    is_manual = "(manual)" in lowered or "[manual]" in lowered
                     if crit_id not in criteria_map:
                         criteria_map[crit_id] = {
                             "id": crit_id,
@@ -279,18 +275,26 @@ def cmd_verify_crit(args):
                             "source_file": fname,
                         }
 
-    if not criteria_map:
-        _emit({
-            "ok": True,
-            "change": change,
-            "criteria": [],
-            "failures": 0,
-            "message": f"No se encontraron criterios CRIT-XX en las especificaciones de '{change}'."
-        }, 0)
+    if root_docs.spec_mode(change_dir) == "root":
+        requirements = root_docs.find_root_dir(change_dir) / "requirements.md"
+        if requirements.exists():
+            text = root_docs.strip_html_comments(requirements.read_text(encoding="utf-8"))
+            scope = set(root_docs.read_rf_scope(change_dir))
+            for rf in root_docs.parse_rfs(text):
+                if rf["id"] not in scope:
+                    continue
+                for crit in rf["criteria"]:
+                    criteria_map.setdefault(crit["id"], {
+                        "id": crit["id"],
+                        "checked": crit["checked"],
+                        "description": crit["description"],
+                        "type": crit["type"],
+                        "source_file": "requirements.md",
+                        "rf": rf["id"],
+                    })
 
     failures = 0
     results = []
-
     for crit_id in sorted(criteria_map.keys()):
         item = criteria_map[crit_id]
         if item["type"] == "manual":
@@ -300,6 +304,7 @@ def cmd_verify_crit(args):
             code_matches = [
                 l for l in _search_pattern_in_tests(REPO_ROOT, crit_id)
                 if not any(f"changes/{change}/" in l or "SESSION.md" in l or "PLAN-" in l for _ in [0])
+                and root_docs.crit_matches(crit_id, l)
             ]
             if code_matches:
                 first = code_matches[0]
@@ -312,6 +317,34 @@ def cmd_verify_crit(args):
                 item["location"] = None
                 failures += 1
         results.append(item)
+
+    return {"results": results, "failures": failures}
+
+
+def cmd_verify_crit(args):
+    """
+    Audita deterministamente la trazabilidad 1:1 de criterios CRIT-XX en tests.
+    Extrae criterios de tasks.md, design.md, objective.md y (modo raíz) de los RF
+    del scope en requirements.md, y verifica que para cada criterio automatizado
+    exista una prueba que contenga exactamente su identificador.
+    """
+    change = args.change
+    guard_dir = _find_guard_dir(REPO_ROOT)
+    change_dir = guard_dir / "changes" / change
+    if not change_dir.exists():
+        _emit({"ok": False, "change": change, "message": f"El change '{change}' no existe."}, 1)
+
+    audit = _audit_criteria(change, change_dir)
+    results, failures = audit["results"], audit["failures"]
+
+    if not results:
+        _emit({
+            "ok": True,
+            "change": change,
+            "criteria": [],
+            "failures": 0,
+            "message": f"No se encontraron criterios CRIT-XX en las especificaciones de '{change}'."
+        }, 0)
 
     ok = failures == 0
     message = (
@@ -394,8 +427,8 @@ def cmd_session_checkpoint(args):
         f"- Human review: pending\n"
     )
 
-    session_root = REPO_ROOT / "SESSION.md"
-    tmp_root = REPO_ROOT / "SESSION.md.tmp"
+    session_root = guard_dir / "SESSION.md"
+    tmp_root = guard_dir / "SESSION.md.tmp"
     session_change = change_dir / "SESSION.md"
 
     try:
@@ -485,16 +518,29 @@ def cmd_init(args):
     elif "@AGENTS.md" not in claude_file.read_text(encoding="utf-8"):
         claude_file.write_text(claude_file.read_text(encoding="utf-8").rstrip() + "\n@AGENTS.md\n", encoding="utf-8")
 
-    # verify-crit.sh
-    scripts_dir = target_dir / "scripts"
-    verify_script = scripts_dir / "verify-crit.sh"
+    # Documentos raíz (2-File Root Protocol): se crean solo si faltan, nunca se pisan.
+    root_docs_created = []
+    for doc_name in ("requirements.md", "design.md"):
+        doc_path = target_dir / doc_name
+        if doc_path.exists():
+            continue
+        template = _resolve_template(f"{doc_name}.template")
+        if template is None:
+            continue
+        text = template.read_text(encoding="utf-8").replace("{{PROJECT_NAME}}", target_dir.name)
+        doc_path.write_text(text, encoding="utf-8")
+        root_docs_created.append(doc_name)
+
+    # verify-crit.sh → .spec-guard/bin/ (no ensucia la raíz del proyecto)
+    bin_dir = spec_dir / "bin"
+    verify_script = bin_dir / "verify-crit.sh"
     installed_verify = False
-    source_verify = REPO_ROOT / "scripts" / "verify-crit.sh"
+    source_verify = Path(__file__).resolve().parent.parent / "scripts" / "verify-crit.sh"
     if not source_verify.exists():
         source_verify = Path.home() / ".agents" / "skills" / "spec-guard" / "bin" / "verify-crit.sh"
 
     if source_verify.exists() and source_verify.resolve() != verify_script.resolve():
-        scripts_dir.mkdir(parents=True, exist_ok=True)
+        bin_dir.mkdir(parents=True, exist_ok=True)
         import shutil
         shutil.copy2(str(source_verify), str(verify_script))
         os.chmod(str(verify_script), 0o755)
@@ -508,9 +554,30 @@ def cmd_init(args):
         "spec_dir": str(spec_dir),
         "agents_md": str(agents_file),
         "claude_md": str(claude_file),
+        "root_docs_created": root_docs_created,
         "verify_script": str(verify_script) if (installed_verify or verify_script.exists()) else None,
         "message": "Repositorio inicializado exitosamente para SpecGuard SDD.",
     })
+
+
+def _resolve_template(name: str):
+    """Plantilla empaquetada o, en su defecto, la instalada en ~/.agents/skills/spec-guard."""
+    for candidate in (
+        TEMPLATES_DIR / name,
+        Path.home() / ".agents" / "skills" / "spec-guard" / "templates" / name,
+    ):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _parse_rf_ids(raw: str):
+    """'RF-101, RF-102' -> ['RF-101', 'RF-102']; None si algún ID es inválido."""
+    from spec_guard.core.root_docs import RF_ID_RE
+    ids = [x.strip().upper() for x in (raw or "").split(",") if x.strip()]
+    if not ids or any(not RF_ID_RE.match(i) for i in ids):
+        return None
+    return list(dict.fromkeys(ids))
 
 
 def cmd_init_change(args):
@@ -523,7 +590,18 @@ def cmd_init_change(args):
             "message": f"El change '{args.change}' ya existe.",
         }, 1)
 
+    rf_ids = []
+    if getattr(args, "rf", None):
+        rf_ids = _parse_rf_ids(args.rf)
+        if rf_ids is None:
+            _emit({
+                "ok": False,
+                "error": "INVALID_RF_IDS",
+                "message": f"IDs de RF inválidos: '{args.rf}'. Formato esperado: RF-101,RF-102",
+            }, 4)
+
     change_dir.mkdir(parents=True, exist_ok=True)
+    scope_block = f"\n[Scope]\nrf_ids = {', '.join(rf_ids)}\n" if rf_ids else ""
     with open(state_file, "w", encoding="utf-8") as f:
         f.write(
             "[Metadata]\n"
@@ -538,13 +616,107 @@ def cmd_init_change(args):
             "lock_phase = plan\n"
             "completed_phases = \n"
             "pending_phases = plan, execute, verify\n"
+            + scope_block
         )
     _emit({
         "ok": True,
         "change": args.change,
         "state_file": str(state_file),
+        "rf_ids": rf_ids,
         "message": f"Change '{args.change}' inicializado. lock_phase=plan",
     })
+
+
+# ─── RF tracking (2-File Root Protocol) ─────────────────────────────────────
+
+def _summarize_rf(rf: dict) -> dict:
+    return {
+        "id": rf["id"],
+        "title": rf["title"],
+        "done": rf["checked"],
+        "criteria": [{"id": c["id"], "type": c["type"], "checked": c["checked"]} for c in rf["criteria"]],
+    }
+
+
+def cmd_rf_status(args):
+    from spec_guard.core import root_docs
+
+    requirements = REPO_ROOT / "requirements.md"
+    if not requirements.exists():
+        _emit({"ok": False, "error": "NO_REQUIREMENTS",
+               "message": "No existe requirements.md en la raíz. Ejecutá 'sg init'."}, 1)
+
+    rfs = root_docs.parse_rfs(root_docs.strip_html_comments(requirements.read_text(encoding="utf-8")))
+    done = sum(1 for rf in rfs if rf["checked"])
+    payload = {
+        "ok": True,
+        "totals": {"total": len(rfs), "done": done, "pending": len(rfs) - done},
+        "pending_ids": [rf["id"] for rf in rfs if not rf["checked"]],
+        "rfs": [_summarize_rf(rf) for rf in rfs],
+    }
+    if getattr(args, "change", None):
+        change_dir = CHANGES_DIR / args.change
+        if not change_dir.exists():
+            _emit({"ok": False, "change": args.change, "message": f"El change '{args.change}' no existe."}, 1)
+        scope = root_docs.read_rf_scope(change_dir)
+        payload["change"] = args.change
+        payload["scope"] = scope
+        payload["in_scope"] = [_summarize_rf(rf) for rf in rfs if rf["id"] in scope]
+    _emit(payload)
+
+
+def cmd_mark_rf(args):
+    """Marca un RF como completado en requirements.md. Solo en VERIFY, dentro del scope, con CRIT cubiertos."""
+    from spec_guard.core import root_docs
+
+    change, rf_id = args.change, args.rf.strip().upper()
+    change_dir = CHANGES_DIR / change
+    state_file = change_dir / "state.ini"
+    if not state_file.exists():
+        _emit({"ok": False, "change": change, "message": f"El change '{change}' no existe."}, 1)
+
+    if root_docs.spec_mode(change_dir) != "root":
+        _emit({"ok": False, "error": "NOT_ROOT_MODE",
+               "message": "mark-rf solo aplica a changes del 2-File Root Protocol (sin objective.md)."}, 4)
+
+    scope = root_docs.read_rf_scope(change_dir)
+    if rf_id not in scope:
+        _emit({"ok": False, "error": "RF_NOT_IN_SCOPE", "rf": rf_id, "scope": scope,
+               "message": f"{rf_id} no pertenece al scope del change '{change}'."}, 4)
+
+    cfg = configparser.ConfigParser()
+    cfg.read(state_file, encoding="utf-8")
+    lock_phase = cfg.get("Graph", "lock_phase", fallback="None")
+    if lock_phase != "verify":
+        _emit({"ok": False, "error": "WRONG_PHASE", "lock_phase": lock_phase,
+               "message": f"mark-rf requiere lock_phase=verify (actual: {lock_phase})."}, 3)
+
+    requirements = root_docs.find_root_dir(change_dir) / "requirements.md"
+    if not requirements.exists():
+        _emit({"ok": False, "error": "NO_REQUIREMENTS", "message": "No existe requirements.md en la raíz."}, 1)
+    original = requirements.read_text(encoding="utf-8")
+
+    new_text, status = root_docs.set_rf_checked(original, rf_id)
+    if status == "NOT_FOUND":
+        _emit({"ok": False, "error": "RF_NOT_FOUND", "rf": rf_id,
+               "message": f"{rf_id} no existe en requirements.md."}, 4)
+    if status == "ALREADY_DONE":
+        _emit({"ok": True, "status": "ALREADY_DONE", "rf": rf_id,
+               "message": f"{rf_id} ya estaba completado."})
+
+    audit = _audit_criteria(change, change_dir)
+    rf_failures = [c["id"] for c in audit["results"]
+                   if c.get("rf") == rf_id and c["status"].startswith("FALLO")]
+    if audit["failures"]:
+        _emit({"ok": False, "error": "CRIT_UNCOVERED", "rf": rf_id, "uncovered": rf_failures,
+               "failures": audit["failures"],
+               "message": "verify-crit tiene criterios automatizados sin test. Corregí antes de cerrar el RF."}, 2)
+
+    tmp = requirements.with_name(requirements.name + ".tmp")
+    tmp.write_text(new_text, encoding="utf-8")
+    tmp.replace(requirements)
+    _emit({"ok": True, "status": "SUCCESS", "rf": rf_id, "change": change,
+           "message": f"{rf_id} marcado como completado en requirements.md."})
 
 
 def cmd_list_changes(args):
@@ -988,6 +1160,17 @@ def build_parser():
     # init-change
     p = sub.add_parser("init-change", help="Crea un nuevo change con state.ini en lock_phase=plan")
     p.add_argument("--change", required=True)
+    p.add_argument("--rf", default=None,
+                   help="RFs de requirements.md que cubre el change (ej. RF-101,RF-102)")
+
+    # rf-status
+    p = sub.add_parser("rf-status", help="Estado de los RF de requirements.md (JSON)")
+    p.add_argument("--change", default=None, help="Incluye el scope de este change")
+
+    # mark-rf
+    p = sub.add_parser("mark-rf", help="Marca un RF como completado (solo en VERIFY, con CRIT cubiertos)")
+    p.add_argument("--change", required=True)
+    p.add_argument("--rf", required=True)
 
     # list-changes
     sub.add_parser("list-changes", help="Lista los changes activos (excluye archive/)")
@@ -1070,6 +1253,8 @@ DISPATCH = {
     "verify-crit": cmd_verify_crit,
     "session-checkpoint": cmd_session_checkpoint,
     "init-change": cmd_init_change,
+    "rf-status": cmd_rf_status,
+    "mark-rf": cmd_mark_rf,
     "list-changes": cmd_list_changes,
     "install-hooks": cmd_install_hooks,
     "hooks-start": cmd_hooks_start,

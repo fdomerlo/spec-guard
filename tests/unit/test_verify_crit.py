@@ -141,8 +141,9 @@ def test_session_checkpoint_creation(monkeypatch, tmpdir, capsys):
     res = json.loads(captured.out)
     assert res["ok"] is True
 
-    session_file = Path(tmpdir) / "SESSION.md"
+    session_file = Path(tmpdir) / ".spec-guard" / "SESSION.md"
     assert session_file.exists()
+    assert not (Path(tmpdir) / "SESSION.md").exists()
     content = session_file.read_text()
     assert "Implementar CRIT-02" in content
     assert "CRIT-01 completado" in content
@@ -178,7 +179,12 @@ def test_init_sh_bootstrap(tmpdir):
     assert claude_md.exists()
     assert "@AGENTS.md" in claude_md.read_text(encoding="utf-8")
 
-    # Verify scripts/verify-crit.sh
-    verify_crit = Path(tmpdir) / "scripts" / "verify-crit.sh"
+    # Verify .spec-guard/bin/verify-crit.sh (no scripts/ dir in the project root)
+    verify_crit = Path(tmpdir) / ".spec-guard" / "bin" / "verify-crit.sh"
     assert verify_crit.exists()
     assert os.access(str(verify_crit), os.X_OK)
+    assert not (Path(tmpdir) / "scripts").exists()
+
+    # Verify root documents created from templates
+    assert (Path(tmpdir) / "requirements.md").exists()
+    assert (Path(tmpdir) / "design.md").exists()

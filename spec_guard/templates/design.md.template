@@ -1,0 +1,46 @@
+# {{PROJECT_NAME}} — Arquitectura y Diseño Técnico (SAD)
+
+<!--
+Fuente de verdad técnica del proyecto (2-File Root Protocol de spec-guard).
+El stack por defecto ya está precargado: ajustalo si este proyecto difiere.
+Completá cada {placeholder}: `sg validate-spec` rechaza el gate mientras quede alguno.
+-->
+
+## 1. Stack Tecnológico Obligatorio
+*Si el agente intenta sugerir o instalar librerías fuera de este stack, la ejecución debe detenerse y pedir aprobación.*
+- **Backend:** Python (Django 5.x), arquitectura basada en servicios.
+- **Frontend:** HTML5, Tailwind CSS, Alpine.js, HTMX (sin frameworks SPA pesados).
+- **Base de Datos:** PostgreSQL (o MariaDB según el entorno).
+- **Infraestructura:** Contenedores LXC / Docker sobre Proxmox VE.
+
+## 2. Modelo de Datos y Esquema de Persistencia
+*Declaración formal de entidades. La IA genera migraciones y modelos solo a partir de esta sección. Los nombres de entidad usan los Términos Permitidos del glosario.*
+
+### Entidad: `{NombreEntidad}`
+- `id`: UUID (Primary Key)
+- `{campo}`: {Tipo} ({restricciones})
+
+<!-- Ejemplo (reemplazar y descomentar):
+### Entidad: `HistoriaClinica`
+- `id`: UUID (Primary Key)
+- `paciente_id`: ForeignKey (Persona)
+- `fecha_creacion`: DateTime
+-->
+
+## 3. Contratos de Interfaz y Endpoints (API / HTMX)
+*Entradas y salidas de cada vista parcial.*
+
+- **{MÉTODO} `{ruta}`**
+  - **Propósito:** {Qué renderiza o muta}
+  - **Payload de entrada:** {Campos o "Ninguno"}
+  - **Respuesta esperada:** Fragmento HTML (`partial.html`) con Tailwind. No retornar JSON salvo que se indique.
+
+## 4. Patrones de Diseño y Reglas de Código
+- **Separación de conceptos:** la lógica de negocio reside en capas de servicios (`services.py`), nunca en modelos ni vistas de Django.
+- **Respuestas HTMX:** usar encabezados `HX-Trigger` para comunicar estado entre componentes del frontend.
+- **Interactividad local:** Alpine.js solo para estado de UI efímero; el estado de dominio vive en el servidor.
+
+## 5. Infraestructura y Seguridad
+- Las variables de entorno críticas se leen exclusivamente desde archivos `.env` gestionados fuera del repositorio.
+- Todo servicio expuesto pasa por un proxy inverso con TLS estricto.
+- CSRF activo en toda mutación (incluidas las peticiones HTMX).

@@ -1,0 +1,46 @@
+# {{PROJECT_NAME}} — Especificación de Requerimientos de Producto (PRD)
+
+<!--
+Fuente de verdad funcional del proyecto (2-File Root Protocol de spec-guard).
+- Completá cada {placeholder}: `sg validate-spec` rechaza el gate mientras quede alguno.
+- Los checkbox de los RF ([ ] / [x]) solo los cambia `sg mark-rf` al cerrar VERIFY. No los edites a mano.
+- Las preguntas bloqueantes se marcan con [!] en la sección 6 y bloquean el gate hasta resolverse.
+-->
+
+## 1. Visión General del Producto y Contexto
+*Una sola oración sobre el propósito del sistema. Evitá adjetivos ambiguos.*
+- **Problema central:** {Qué problema resuelve}
+- **Objetivo principal:** {Resultado esperado demostrable}
+
+## 2. Glosario Estricto de Dominio (Token Anchoring)
+*CRÍTICO PARA LA IA: reglas semánticas obligatorias. El agente DEBE rechazar cualquier código, esquema o texto que use sinónimos prohibidos.*
+
+| Término Permitido | Definición Precisa | Sinónimos Prohibidos (Rechazar) |
+| :--- | :--- | :--- |
+<!-- Ejemplo (reemplazar y descomentar, una fila por término):
+| **Historia Clínica** | Registro global, único e inmutable por paciente. | Ficha médica, Historial, Legajo. |
+-->
+
+## 3. Roles de Usuario y Permisos (Matriz de Acceso)
+*Actores explícitos para que la IA derive autenticación y políticas de middleware.*
+- **{Rol 1}:** Puede {acciones permitidas}. No puede {acciones prohibidas}.
+
+## 4. Requerimientos Funcionales
+*Un heading por requerimiento. Criterios con ID `CRIT-<número de RF>-<n>` y tipo `[automated]` o `[manual]`; cada criterio automatizado se mapea a un test `test_crit_<rf>_<n>_...`. Agrupá por módulo con la centena (RF-1xx = módulo 1).*
+
+<!-- Ejemplo (reemplazar y descomentar):
+### [ ] RF-101: Registrar Evolución
+- **Módulo:** RF-100 Historias Clínicas
+- **Descripción:** El sistema debe permitir registrar una Evolución dentro de una Historia Clínica.
+- **Criterios de Aceptación:**
+  - [ ] CRIT-101-1 [automated]: El formulario valida los campos mediante HTMX antes del envío.
+  - [ ] CRIT-101-2 [automated]: La mutación registra un log de auditoría.
+- **Flujo de Excepción:** Si la Historia Clínica no existe, el sistema responde 404 con un fragmento de error.
+-->
+
+## 5. Restricciones de Reducción de Alcance (Out of Scope)
+*Qué NO debe construir la IA, para evitar que extienda el código innecesariamente.*
+- NO {funcionalidad excluida en esta fase}.
+
+## 6. Preguntas Abiertas
+- Ninguna.

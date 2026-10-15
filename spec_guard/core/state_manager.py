@@ -16,6 +16,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from spec_guard.core import root_docs
 from spec_guard.core.locking import (
     try_acquire_lockfile,
     release_lockfile,
@@ -693,8 +694,8 @@ def _section_body(content: str, header: str) -> str:
     return rest[:m.start()] if m else rest
 
 
-def cmd_validate_spec(args):
-    change_dir = resolve_change_dir(args.change)
+def _validate_legacy(change_dir: Path) -> list:
+    """Validación histórica: objective.md + design.md dentro del change."""
     objective_path = change_dir / "objective.md"
     design_path = change_dir / "design.md"
 
@@ -735,8 +736,73 @@ def cmd_validate_spec(args):
                     "detail": f"'## Criterios de Éxito' tiene {bullet_count} ítem(s) enumerados — "
                               "se esperan al menos 2 criterios concretos, no una frase suelta."
                 })
+    return issues
 
-    result = {"ok": len(issues) == 0, "change": args.change, "issues": issues}
+
+def _validate_root(change_dir: Path) -> list:
+    """2-File Root Protocol: requirements.md + design.md en la raíz, RFs del [Scope]."""
+    root = root_docs.find_root_dir(change_dir)
+    issues = []
+    texts = {}
+
+    for label, sections in [
+        ("requirements.md", root_docs.REQUIREMENTS_SECTIONS),
+        ("design.md", root_docs.DESIGN_SECTIONS),
+    ]:
+        path = root / label
+        if not path.exists():
+            issues.append({"file": label, "issue": "MISSING_FILE",
+                           "detail": "Ejecutá 'sg init' para crear la plantilla."})
+            continue
+        content = root_docs.strip_html_comments(path.read_text(encoding="utf-8"))
+        texts[label] = content
+        if "[!]" in content:
+            issues.append({"file": label, "issue": "BLOCKING_OPEN_QUESTION",
+                           "detail": "Hay preguntas abiertas marcadas [!] sin resolver."})
+        for key, keywords in sections.items():
+            if root_docs.section_body(content, keywords) is None:
+                issues.append({"file": label, "issue": "MISSING_SECTION", "detail": key})
+        unresolved = root_docs.find_placeholders(content)
+        if unresolved:
+            issues.append({"file": label, "issue": "UNRESOLVED_PLACEHOLDER", "detail": unresolved[:5]})
+
+    requirements = texts.get("requirements.md")
+    if requirements is not None and not root_docs.parse_glossary(requirements):
+        issues.append({"file": "requirements.md", "issue": "EMPTY_GLOSSARY",
+                       "detail": "El Glosario Estricto necesita al menos un término permitido."})
+
+    scope = root_docs.read_rf_scope(change_dir)
+    if not scope:
+        issues.append({"file": "state.ini", "issue": "MISSING_RF_SCOPE",
+                       "detail": "Asigná los RF del change: sg init-change --change <c> --rf RF-101"})
+    if requirements is None:
+        return issues
+
+    rfs = {rf["id"]: rf for rf in root_docs.parse_rfs(requirements)}
+    for rf_id in scope:
+        rf = rfs.get(rf_id)
+        if rf is None:
+            issues.append({"file": "requirements.md", "issue": "RF_NOT_FOUND", "detail": rf_id})
+            continue
+        if not rf["description"]:
+            issues.append({"file": "requirements.md", "issue": "MISSING_DESCRIPTION", "detail": rf_id})
+        if len(rf["criteria"]) < 2:
+            issues.append({"file": "requirements.md", "issue": "INSUFFICIENT_CRITERIA",
+                           "detail": f"{rf_id} tiene {len(rf['criteria'])} criterio(s); se esperan al menos 2."})
+        expected_prefix = "CRIT-" + rf_id.split("-", 1)[1] + "-"
+        for crit in rf["criteria"]:
+            if not crit["id"].startswith(expected_prefix):
+                issues.append({"file": "requirements.md", "issue": "CRIT_ID_MISMATCH",
+                               "detail": f"{crit['id']} en {rf_id} (esperado {expected_prefix}<n>)"})
+    return issues
+
+
+def cmd_validate_spec(args):
+    change_dir = resolve_change_dir(args.change)
+    mode = root_docs.spec_mode(change_dir)
+    issues = _validate_root(change_dir) if mode == "root" else _validate_legacy(change_dir)
+
+    result = {"ok": len(issues) == 0, "change": args.change, "mode": mode, "issues": issues}
     print(json.dumps(result, ensure_ascii=False))
     sys.exit(EXIT_OK if not issues else EXIT_VALIDATION)
 

@@ -25,7 +25,8 @@ Behavior:
   - If the markers already exist, it updates that section in-place without touching
     custom instructions.
   - Ensures CLAUDE.md references @AGENTS.md.
-  - Installs scripts/verify-crit.sh into the target repository.
+  - Creates requirements.md and design.md from templates when missing (never overwritten).
+  - Installs .spec-guard/bin/verify-crit.sh into the target repository.
   - Initializes .spec-guard/ structure if needed.
 EOF
 }
@@ -115,8 +116,26 @@ else
   fi
 fi
 
-# Install verify-crit.sh
-VERIFY_DEST_DIR="$TARGET_DIR/scripts"
+# Root documents (2-File Root Protocol): created only when missing, never overwritten
+PROJECT_NAME="$(basename "$TARGET_DIR")"
+for doc in requirements.md design.md; do
+  doc_template="$REPO_DIR/spec_guard/templates/${doc}.template"
+  doc_target="$TARGET_DIR/$doc"
+  if [[ -f "$doc_template" && ! -e "$doc_target" ]]; then
+    python3 -c '
+import sys
+src, dst, name = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(src, encoding="utf-8") as f:
+    text = f.read().replace("{{PROJECT_NAME}}", name)
+with open(dst, "w", encoding="utf-8") as f:
+    f.write(text)
+' "$doc_template" "$doc_target" "$PROJECT_NAME"
+    echo "Created: $doc_target"
+  fi
+done
+
+# Install verify-crit.sh inside .spec-guard/bin (keeps the project root clean)
+VERIFY_DEST_DIR="$TARGET_DIR/.spec-guard/bin"
 VERIFY_DEST="$VERIFY_DEST_DIR/verify-crit.sh"
 if [[ -f "$VERIFY_SRC" ]]; then
   if [[ "$(readlink -f "$VERIFY_SRC")" != "$(readlink -f "$VERIFY_DEST" 2>/dev/null || echo "$VERIFY_DEST")" ]]; then
