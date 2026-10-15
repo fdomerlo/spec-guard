@@ -4,8 +4,8 @@ import pytest
 from argparse import Namespace
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../spec_guard")))
-import core.state_manager as sm
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from spec_guard.core import state_manager as sm
 
 
 def setup_plan_change(tmpdir):

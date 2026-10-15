@@ -5,8 +5,8 @@ import pytest
 from argparse import Namespace
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../spec_guard")))
-import cli
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from spec_guard import cli
 
 
 def setup_change(tmpdir, tasks_content=None, design_content=None):
