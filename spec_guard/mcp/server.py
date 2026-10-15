@@ -11,6 +11,7 @@ Exposed tools:
   - verify_phase_gate(change: str, phase: str) -> dict
   - mark_task_completed(change: str, task_id: str) -> dict
   - validate_spec(change: str) -> dict
+  - get_rf_status(change: str = "") -> dict
 """
 import json
 import os
@@ -63,6 +64,37 @@ def validate_spec(change: str) -> dict:
     Detecta secciones faltantes, placeholders sin completar y preguntas bloqueantes [!]."""
     result, _ = _sg("validate-spec", "--change", change)
     return result
+
+
+@mcp.tool()
+def get_rf_status(change: str = "") -> dict:
+    """Estado de los RF de requirements.md (totales, pendientes y, si se indica change, su scope)."""
+    args = ["rf-status"] + (["--change", change] if change else [])
+    result, _ = _sg(*args)
+    return result
+
+
+def _read_root_doc(name: str) -> str:
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        p = parent / name
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+        if (parent / ".spec-guard").exists() or (parent / ".git").exists():
+            break
+    return f"ERROR: {name} no encontrado en la raíz del proyecto"
+
+
+@mcp.resource("spec://requirements")
+def get_requirements_resource() -> str:
+    """Retorna requirements.md (PRD raíz, fuente de verdad funcional)."""
+    return _read_root_doc("requirements.md")
+
+
+@mcp.resource("spec://design")
+def get_root_design_resource() -> str:
+    """Retorna design.md (SAD raíz, fuente de verdad técnica)."""
+    return _read_root_doc("design.md")
 
 
 @mcp.resource("spec://{change}/objective")
