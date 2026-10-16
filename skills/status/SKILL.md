@@ -29,72 +29,65 @@ te quede claro por el propio comportamiento del CLI.
 
 ## Qué Hacer
 
-### Paso 1: Encontrar Archivos de Estado
+### Paso 1: Consultar Cambios Activos vía CLI
 
-Busca todos los archivos `state.ini` en el directorio `.spec-guard/changes/`:
+Invoca el comando determinista para listar todos los cambios activos (excluye `archive/` automáticamente):
 
-```text
-.spec-guard/changes/*/state.ini
+```bash
+sg list-changes
 ```
 
-### Paso 2: Parsear cada State.ini
+Para cada cambio retornado, consulta su diagnóstico completo:
 
-Para cada archivo encontrado, extrae los siguientes campos:
+```bash
+sg status --change {nombre}
+```
 
-- `change`: Nombre del cambio
-- `current_phase`: Fase actual (plan, execute, verify)
-- `status`: Estado actual (active, done, blocked)
-- `started_at`: Fecha de inicio en formato ISO 8601
-- `blocked_reason`: Razón del bloqueo (si aplica)
+### Paso 2: Extraer Campos del Schema v2
 
-### Paso 3: Filtrar Cambios Archivados
+Para cada cambio activo, extrae los siguientes campos:
 
-Ignora los cambios que tengan:
+- `name`: Nombre del cambio
+- `lock_phase`: Fase prescriptiva actual (`plan`, `execute`, `verify`)
+- `txn_status`: Estado de la transacción (`idle` | `in_progress`)
+- `txn_phase`: Fase en ejecución si `txn_status == "in_progress"`
+- `lock_state`: Estado del lock POSIX (`FREE` | `ACTIVE` | `STALE`)
+- `schema_version`: Versión del schema (`2`)
 
-- `status: done`
-- Cambios completados (todas las fases en `completed_phases`)
+### Paso 3: Determinar Estado con Semáforo
 
-### Paso 4: Calcular Tiempo Transcurrido
-
-Para cada cambio activo, calcula el tiempo desde `started_at` hasta ahora:
-
-- Formato de salida: "Xh Ym" (horas y minutos)
-- Si ha pasado menos de 1 hora, mostrar solo minutos: "30m"
-- Si ha pasado más de 24 horas, mostrar "24h+"
-
-### Paso 5: Determinar Estado con Semáforo
-
-Aplica la lógica de semáforo:
+Aplica la lógica de semáforo combinando `txn_status` y `lock_state`:
 
 ```text
 | Condición | Emoji | Significado |
 |-----------|-------|-------------|
-| `status == "blocked"` | 🟡 | Bloqueado |
-| `status == "done"` | 🔴 | Completado (no debería aparecer) |
-| `status == "active"` | 🟢 | Activo |
+| `lock_state == "STALE"` | 🔴 | Transacción interrumpida (requiere Recovery Protocol) |
+| `txn_status == "in_progress"` y `lock_state == "ACTIVE"` | 🟡 | Transacción en curso (lock activo) |
+| `txn_status == "idle"` y `lock_state == "FREE"` | 🟢 | Listo para ejecutar `lock_phase` |
 ```
 
-### Paso 6: Formatear Tabla Markdown
+### Paso 4: Formatear Tabla Markdown
 
 Genera una tabla con las siguientes columnas:
 
 ```text
-| Cambio | Fase Actual | Tiempo Transcurrido | Estado | Txn |
-|--------|-------------|---------------------|--------|-----|
-| feat-auth | Apply | 2h 30m | 🟢 | idle |
+| Cambio | Lock Phase | Estado | Txn Status | Lock State |
+|--------|------------|--------|------------|------------|
+| feat-auth | Execute | 🟢 | idle | FREE |
 ```
 
-- **Cambio**: Nombre del cambio (de `change`)
-- **Fase Actual**: Current_phase con primera letra mayúscula (de `current_phase`)
-- **Tiempo Transcurrido**: Formato "Xh Ym" (del cálculo)
+- **Cambio**: Nombre del cambio
+- **Lock Phase**: `lock_phase` con primera letra mayúscula (`Plan`, `Execute`, `Verify`)
 - **Estado**: Emoji del semáforo
+- **Txn Status**: `idle` o `in_progress`
+- **Lock State**: `FREE`, `ACTIVE` o `STALE`
 
-### Paso 7: Manejar Casos Edge
+### Paso 5: Manejar Casos Edge
 
-- **Sin cambios activos**: Mostrar mensaje informativo, no tabla vacía
-- **Archivo corrupto**: Continuar con los demás archivos, mostrar advertencia
+- **Sin cambios activos**: Mostrar mensaje informativo indicando que no hay cambios activos en `.spec-guard/changes/` (y en proyectos bajo el 2-File Root Protocol, sugerir `sg rf-status` para ver el progreso de `requirements.md`).
+- **Archivo corrupto**: Continuar con los demás archivos, mostrar advertencia.
 
-### Paso 8: Devolver Resultado
+### Paso 6: Devolver Resultado
 
 Devuelve la tabla Markdown con el estado de todos los cambios activos.
 

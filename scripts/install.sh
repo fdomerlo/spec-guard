@@ -91,11 +91,15 @@ MANDATORY BOOTSTRAP — execute before responding to anything:
 1. Obey AGENTS.md in the project root if present; otherwise call read_file on $TARGET_DIR/_shared/memory-guard.md.
 2. Follow every instruction in that file as your absolute SDD state contract.
 3. SpecGuard CLI binary: $TARGET_DIR/bin/sg.py (or 'sg' in PATH)
-   Subcomandos operativos (agente): begin | commit | rollback | checkpoint | status
-                                     | next-task | verify-gate | mark-task | verify-crit | session-checkpoint
+   Subcomandos operativos (agente): init | context | next-rf-id | init-change | rf-status | mark-rf
+                                     | glossary-check | validate-spec | begin | commit | rollback
+                                     | checkpoint | session-checkpoint | status | list-changes
+                                     | next-task | verify-gate | mark-task | verify-crit
    Subcomandos EXCLUSIVOS DE HUMANO (el agente nunca los ejecuta):
                                      plan-approve | plan-confirm | hotfix-init | hotfix-confirm
-   Si 'commit' devuelve EXIT_GATE_REQUIRED (5): DETENÉ el ciclo y pedile
+   En modo 'chat' (default), para avanzar de PLAN a EXECUTE solicita aprobación en el chat (STOP)
+   y luego ejecuta 'sg commit --change <nombre> --next-phase execute --approval-text "<respuesta>"'.
+   En modo 'strict', si 'commit' devuelve EXIT_GATE_REQUIRED (5): DETENÉ el ciclo y pedile
    al usuario que corra 'sg plan-approve --change <nombre>' en su propia
    terminal, y luego 'sg plan-confirm --change <nombre> --token <CODIGO>'.
 4. Check for an active change at .spec-guard/changes/*/state.ini (or legacy .state-guard/changes/*/state.ini)

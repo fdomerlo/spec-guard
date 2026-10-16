@@ -74,7 +74,7 @@ Para evitar consumir miles de tokens releyendo especificaciones extensas en cada
 ### 6. Modos de Compuerta Humana Configurables (`chat` vs `strict`)
 El agente **nunca puede auto-aprobarse** para comenzar a modificar código fuente:
 - **Modo `chat` (Predeterminado — Cero Fricción)**:
-  Diseñado para pair-programming interactivo. El agente está obligado a hacer un **STOP** explícito en la conversación, presentar el plan y solicitar tu autorización. Al responder afirmativamente en el chat, el agente ejecuta `sg commit` registrando la aprobación (`plan_approved_by = chat`) sin salir de la conversación.
+  Diseñado para pair-programming interactivo. El agente está obligado a hacer un **STOP** explícito en la conversación, presentar el plan y solicitar tu autorización. Al responder afirmativamente en el chat, el agente ejecuta `sg commit --approval-text "<tu respuesta>"` registrando la evidencia textual en `plan_approved_by` sin salir de la conversación.
 - **Modo `strict` (Máxima Seguridad Adversarial)**:
   Diseñado para agentes autónomos con ejecución de consola desatendida. `sg commit` rechaza la fase con código `EXIT_GATE_REQUIRED (5)` y exige un token criptográfico generado fuera de banda en la terminal física interactiva del humano (`/dev/tty`) mediante `sg plan-approve` y `sg plan-confirm`.
 
@@ -85,14 +85,13 @@ Garantiza aislamiento estricto entre fases mediante `BEGIN`, `COMMIT`, `ROLLBACK
 
 ## 📦 Interfaces del Sistema
 
-SpecGuard se manifiesta según la necesidad de tu entorno:
+SpecGuard se manifiesta según la necesidad de tu entorno (100% Python Standard Library en su motor central, cero dependencias pesadas):
 
-1. **CLI Unificado (`sg` / `spec-guard`)**: Herramienta de línea de comandos en `$PATH` para humanos y agentes.
+1. **CLI Unificado (`sg` / `spec-guard`)**: Herramienta de línea de comandos en `$PATH` para humanos y agentes (salida JSON pura).
 2. **Skill Nativa para Antigravity**: Registrada en `~/.gemini/config/skills/spec-guard/SKILL.md`.
 3. **Sub-Agente y Slash Commands para OpenCode**: Registrado en `opencode.jsonc` con comandos dinámicos (`/init`, `/new`, `/continue`, `/status`, `/checkpoint`, etc.).
-4. **Servidor MCP (`spec-guard-mcp`)**: Herramientas (`get_project_context`, `check_glossary`, `get_rf_status`, `begin_phase`, `commit_phase`, `rollback_phase`, `checkpoint`, `session_checkpoint`, `verify_criteria`, `validate_spec`) y recursos URI (`spec://requirements`, `spec://design`, `spec://session`, `spec://{change}/objective`, `spec://{change}/design`) sobre standard I/O para clientes MCP (Claude Desktop, Cursor, OpenCode).
-5. **Daemon de Hooks en Background (`sg hooks-start`)**: Automatización de tareas derivadas (linting, sync de tests) con prohibición hardcodeada de tocar especificaciones.
-6. **Script Local de Verificación (`.spec-guard/bin/verify-crit.sh`)**: Script ligero y portable para auditar criterios sin dependencias externas.
+4. **Daemon de Hooks en Background (`sg hooks-start`)**: Automatización de tareas derivadas (linting, sync de tests) con prohibición hardcodeada de tocar especificaciones.
+5. **Script Local de Verificación (`.spec-guard/bin/verify-crit.sh`)**: Script ligero y portable para auditar criterios sin dependencias externas.
 
 ---
 
@@ -150,7 +149,7 @@ Esto detectará el stack de tu proyecto y creará:
    # o en chat:
    /new agregar-autenticacion
    ```
-   *(En repositorios en modo legacy sin documentos en la raíz, el agente redactará `objective.md`, `design.md` y `tasks.md` dentro de `.spec-guard/changes/agregar-autenticacion/specs/`).*
+   *(En repositorios en modo legacy sin documentos en la raíz, el agente redactará `objective.md`, `design.md` y `tasks.md` dentro de `.spec-guard/changes/agregar-autenticacion/`).*
 
 ### Paso 2: Validación y Compuerta Humana
 El agente valida la especificación y audita la coherencia del glosario:
@@ -159,9 +158,9 @@ sg validate-spec --change agregar-autenticacion
 sg glossary-check
 ```
 
-- **En Modo `chat` (Default — Cero Fricción)**: El agente hace una pausa obligatoria (**STOP**), resume el plan en el chat y solicita confirmación. Tras tu visto bueno, ejecuta el commit a `execute`:
+- **En Modo `chat` (Default — Cero Fricción)**: El agente hace una pausa obligatoria (**STOP**), resume el plan en el chat y solicita confirmación. Tras tu visto bueno, ejecuta el commit a `execute` citando tu respuesta:
   ```bash
-  sg commit --change agregar-autenticacion --next-phase execute
+  sg commit --change agregar-autenticacion --next-phase execute --approval-text "Aprobado, avanzá con la implementación"
   ```
 
 - **En Modo `strict`**: Si configuraste `gate.mode: strict`, `sg commit` requerirá token interactivo generado fuera de banda:
@@ -208,32 +207,32 @@ sg begin --change agregar-autenticacion --phase verify
 
 | Subcomando | Descripción | Ámbito |
 |---|---|---|
-| `sg init` | Inicializa `requirements.md`, `design.md`, `AGENTS.md` y `.spec-guard/` en el proyecto | Humano / Agente |
-| `sg context [--json]` | Compila e inyecta el contexto del proyecto (Read-First Ignition, reglas, glosario, stack) | Agente / Humano |
-| `sg next-rf-id` | Calcula y sugiere el siguiente identificador secuencial disponible (`RF-XXX`) | Agente / Humano |
+| `sg init [--force]` | Inicializa `requirements.md`, `design.md`, `AGENTS.md` y `.spec-guard/` en el proyecto | Humano / Agente |
+| `sg context [--root <dir>]` | Compila e inyecta el contexto del proyecto en JSON (Read-First Ignition, reglas, glosario, stack) | Agente / Humano |
+| `sg next-rf-id [--module <rf>]` | Calcula y sugiere el siguiente identificador secuencial disponible (`RF-XXX`) | Agente / Humano |
 | `sg init-change --change <c> [--rf <id>]` | Crea el cambio y fija su scope de RF en `requirements.md` (o specs delta) | Agente |
 | `sg rf-status [--change <c>]` | Muestra el estado de los RFs de `requirements.md` (totales, pendientes, completados) | Agente / Humano |
 | `sg mark-rf --change <c> --rf <id>` | Marca un RF como completado (`[x]`) tras verificar cobertura total de criterios | Agente |
-| `sg glossary-check [--staged] [--strict]` | Audita el diff contra la tabla de términos permitidos y sinónimos prohibidos | Agente / Humano |
-| `sg begin --change <c> --phase <p>` | Inicia una transacción ACID para la fase (`plan`, `execute`, `verify`) | Agente |
-| `sg commit --change <c> --next-phase <p>` | Confirma la fase actual y avanza el DAG transaccional | Agente |
+| `sg glossary-check [--change <c>] [--paths <p...>] [--strict]` | Audita el diff o rutas contra la tabla de términos permitidos y sinónimos prohibidos | Agente / Humano |
+| `sg begin --change <c> --phase <p>` | Inicia una transacción ACID para la fase (`plan`, `execute`, `verify`, `hotfix`) | Agente |
+| `sg commit --change <c> --next-phase <p> [--approval-text <t>]` | Confirma la fase actual y avanza el DAG transaccional | Agente |
 | `sg rollback --change <c>` | Revierte la transacción activa a estado `idle` | Agente / Humano |
 | `sg checkpoint --change <c> --summary <s>` | Guarda un resumen en `state.ini[Session]` (límite 2000 caracteres) | Agente |
-| `sg session-checkpoint --change <c>` | Genera o actualiza el cursor volátil `.spec-guard/SESSION.md` validando ancestría Git | Agente |
-| `sg status [--change <c>]` | Muestra el estado del grafo transaccional y el cambio activo | Humano / Agente |
-| `sg list-changes` | Lista todos los cambios activos y archivados con su fase y fecha | Humano / Agente |
-| `sg mark-task --change <c> --task <id>` | Marca una tarea individual como completada en `tasks.md` (modo legacy) | Agente |
+| `sg session-checkpoint --change <c> [--action <a>]` | Genera o actualiza el cursor volátil `.spec-guard/SESSION.md` validando ancestría Git | Agente |
+| `sg status --change <c>` | Muestra el estado del grafo transaccional del cambio indicado | Humano / Agente |
+| `sg list-changes` | Lista todos los cambios activos con su `lock_phase`, `txn_status` y `schema_version` | Humano / Agente |
+| `sg mark-task --change <c> --task-id <id>` | Marca una tarea individual como completada en `tasks.md` (modo legacy) | Agente |
 | `sg next-task --change <c>` | Muestra la siguiente tarea pendiente de implementación (modo legacy) | Agente |
 | `sg check-completion --change <c>` | Valida si todas las tareas del cambio han sido completadas | Agente |
 | `sg validate-spec --change <c>` | Verifica integridad estructural y presencia obligatoria de *Out of Scope* | Agente / Humano |
 | `sg verify-crit --change <c>` | Audita trazabilidad 1:1 de criterios `CRIT-XX` contra suites de test | Agente / Humano |
-| `sg verify-gate --change <c>` | Verifica si el cambio cumple los requisitos para avanzar la compuerta humana | Agente |
+| `sg verify-gate --change <c> --phase <p>` | Verifica si el cambio cumple los requisitos para ejecutar la fase solicitada | Agente |
 | `sg plan-approve --change <c>` | Emite token de aprobación fuera de banda en `/dev/tty` (modo `strict`) | **Solo Humano** |
 | `sg plan-confirm --change <c> --token <t>` | Valida el token y aprueba el plan (modo `strict`) | **Solo Humano** |
 | `sg hotfix-init --change <c> --reason <r>` | Solicita bypass auditado de hotfix fuera de banda | **Solo Humano** |
 | `sg hotfix-confirm --change <c> --token <t>` | Consume token y desbloquea inicio directo en `execute` | **Solo Humano** |
-| `sg migrate` | Migra configuraciones o estados de versiones anteriores | Humano / Agente |
-| `sg install-hooks` | Instala hooks de Git en el repositorio | Humano |
+| `sg migrate --change <c>` | Migra un `state.ini` de esquema v1 (8 fases) a v2 (3 fases) | Humano / Agente |
+| `sg install-hooks [--force]` | Instala hooks de Git en el repositorio | Humano |
 | `sg hooks-start` / `status` / `stop` | Administra el observador en background de reglas derivadas | Humano |
 
 ---
@@ -270,7 +269,7 @@ python3 tests/run_tests.py
 ```
 
 ```text
-Resultados: 97 PASSED, 0 FAILED
+Resultados: 100 PASSED, 0 FAILED
 ✓ Todas las suites de pruebas completadas con éxito.
 ```
 

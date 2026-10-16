@@ -3,9 +3,8 @@
 sg — SpecGuard CLI
 ==================
 Wrapper de alto nivel sobre state_manager.py. JSON puro en stdout siempre.
-El LLM solo puede invocar los comandos que el servidor MCP expone
-como tools — plan-approve y hotfix-init NO son tools MCP, son comandos
-exclusivamente humanos.
+Los comandos plan-approve, plan-confirm, hotfix-init y hotfix-confirm son
+exclusivamente humanos (terminal física /dev/tty).
 
 Regla de oro: cli.py no duplica lógica de negocio. Delega todo a state_manager.py.
 """

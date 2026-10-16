@@ -369,6 +369,19 @@ assert not os.path.exists(tf_l), f"El archivo token {tf_l} debio ser eliminado t
 print("  PASS: Token revocado exitosamente tras 3 intentos fallidos.\n")
 
 
+def cleanup_test_changes():
+    gate_dir = os.environ.get("SPECGUARD_GATE_DIR")
+    if gate_dir and os.path.exists(gate_dir):
+        shutil.rmtree(gate_dir, ignore_errors=True)
+    for guard in [".spec-guard", ".state-guard"]:
+        for chg in [CHANGE, hotfix_change]:
+            c_dir = os.path.join(REPO_ROOT, guard, "changes", chg)
+            if os.path.exists(c_dir):
+                shutil.rmtree(c_dir, ignore_errors=True)
+
+
+cleanup_test_changes()
+
 print("=" * 60)
 print("TODOS LOS TESTS PASARON")
 print("=" * 60)

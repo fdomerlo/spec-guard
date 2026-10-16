@@ -51,17 +51,58 @@ def test_crit_21_context_legacy_mode_fallback(tmpdir):
     assert out["rf_progress"]["total"] == 0
 
 
-def test_crit_25_mcp_server_exports_context_and_glossary_tools():
-    server_py = Path(__file__).resolve().parents[2] / "spec_guard" / "mcp" / "server.py"
-    content = server_py.read_text(encoding="utf-8")
-    assert "def get_project_context" in content
-    assert "def check_glossary" in content
-    try:
-        from spec_guard.mcp import server
-        assert hasattr(server, "get_project_context")
-        assert hasattr(server, "check_glossary")
-    except ModuleNotFoundError:
-        pass
+def test_crit_01_no_mcp_dependency_or_module():
+    repo_root = Path(__file__).resolve().parents[2]
+    pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "mcp" not in pyproject.lower(), "pyproject.toml should not depend on or expose mcp"
+    assert not (repo_root / "spec_guard" / "mcp").exists(), "spec_guard/mcp directory should be removed"
+    assert not (repo_root / "scripts" / "mcp_server.py").exists(), "scripts/mcp_server.py shim should be removed"
+    assert not (repo_root / "tests" / "unit" / "test_mcp_server.py").exists(), "test_mcp_server.py should be removed"
+
+
+def test_crit_02_docs_sync_and_no_mcp():
+    repo_root = Path(__file__).resolve().parents[2]
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    manual = (repo_root / "MANUAL.md").read_text(encoding="utf-8")
+
+    assert "spec-guard-mcp" not in readme
+    assert "spec-guard-mcp" not in manual
+    assert "## Servidor MCP" not in manual
+    assert "--approval-text" in readme
+    assert "--task-id" in readme
+    assert "sg context [--json]" not in readme
+    assert "sg glossary-check [--staged]" not in readme
+    assert not manual.lstrip().startswith("-##"), "MANUAL.md should not have '-##' typo"
+    assert "spec-intake.md" in manual
+    assert "definition-of-done.md" in manual
+    assert "security-checklist.md" in manual
+    assert "txn_status: failed" not in manual
+
+
+def test_crit_03_skills_and_install_sync():
+    repo_root = Path(__file__).resolve().parents[2]
+    skill_main = (repo_root / "skills" / "spec-guard" / "SKILL.md").read_text(encoding="utf-8")
+    skill_ff = (repo_root / "skills" / "ff" / "SKILL.md").read_text(encoding="utf-8")
+    skill_status = (repo_root / "skills" / "status" / "SKILL.md").read_text(encoding="utf-8")
+    skill_ckpt = (repo_root / "skills" / "checkpoint" / "SKILL.md").read_text(encoding="utf-8")
+    install_sh = (repo_root / "scripts" / "install.sh").read_text(encoding="utf-8")
+
+    assert "--approval-text" in skill_main
+    assert "sg context" in skill_main
+    assert "sg glossary-check" in skill_main
+    assert "sg next-rf-id" in skill_main
+    assert "sin gate interactivo" not in skill_ff
+    assert "lock_phase" in skill_status
+    assert "txn_status" in skill_status
+    assert "1. **Automático**" in skill_ckpt
+    assert "glossary-check" in install_sh
+    assert "context" in install_sh
+
+
+def test_crit_04_concurrency_test_cleans_up_temp_changes():
+    repo_root = Path(__file__).resolve().parents[2]
+    conc_py = (repo_root / "tests" / "concurrency_test.py").read_text(encoding="utf-8")
+    assert "cleanup_test_changes" in conc_py
 
 
 

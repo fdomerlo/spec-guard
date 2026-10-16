@@ -134,8 +134,8 @@ def run_unit_tests():
             sys.modules[module_name] = mod
             spec.loader.exec_module(mod)
         except Exception as e:
-            # Si requiere dependencias opcionales como watchdog o fastmcp que no están instaladas
-            if "watchdog" in str(e) or "mcp" in str(e):
+            # Si requiere dependencias opcionales como watchdog que no están instaladas
+            if "watchdog" in str(e):
                 print(f"  [SKIP] {test_file.name}: falta dependencia opcional ({e})")
                 continue
             errors.append((test_file.name, str(e)))

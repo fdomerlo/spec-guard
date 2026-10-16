@@ -18,15 +18,18 @@ Skill responsable de **generar un checkpoint de sesión de alta fidelidad**. Det
 
 **Dos modos de operación:**
 
+1. **Automático** (post-COMMIT): El protocolo de transacción genera un `session_summary` compacto después de cada fase.
 2. **Manual** (`/checkpoint`): Genera un checkpoint de alta fidelidad con análisis proactivo de todos los artefactos. Útil antes de operaciones riesgosas o para refrescar el contexto.
 
 ## Qué Hacer
 
 ### Paso 1: Detectar Cambio Activo
 
-Buscar `state.ini` con `status: active` en `.spec-guard/changes/*/state.ini`.
+Ejecutar `sg list-changes` para identificar el cambio activo en `.spec-guard/changes/*/state.ini`.
 
 ### Paso 2: Leer Estado Base
+
+Consultar `sg status --change {nombre-del-cambio}` para obtener `lock_phase` y `txn_status`.
 
 ### Paso 3a: Obtener estado_tareas vía middleware
 

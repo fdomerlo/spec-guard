@@ -13,9 +13,9 @@ metadata:
 
 ## Propósito
 
-Meta-skill responsable del avance rápido (Fast-Forward) de un cambio transaccional. Ejecuta secuencialmente las fases PLAN y EXECUTE como transacciones independientes para preservar la integridad del State Guard.
+Meta-skill responsable del avance rápido (Fast-Forward) de un cambio transaccional. Ejecuta secuencialmente las fases PLAN y EXECUTE como 2 transacciones ACID independientes para preservar la integridad de SpecGuard.
 
-> **Nota:** FF ejecuta PLAN en modo "draft automático" sin gate interactivo. Si querés revisión humana obligatoria antes de ejecutar, usá `/plan` directamente.
+> **Nota:** El gate de revisión humana de PLAN sigue siendo obligatorio. Tras aprobar el gate de PLAN, `/ff` inicia inmediatamente la transacción de EXECUTE sin requerir una invocación manual adicional.
 
 ## Qué Hacer
 

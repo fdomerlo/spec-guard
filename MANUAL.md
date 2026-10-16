@@ -2,7 +2,7 @@
 
 Este manual cubre la arquitectura técnica, configuración y flujos avanzados del sistema **SpecGuard v3.0.0**, el motor de Specification-Driven Development (SDD) y persistencia transaccional para agentes de código. SpecGuard soporta nativamente la estructura `.spec-guard/` a la vez que mantiene compatibilidad hacia atrás completa con proyectos que utilicen `.state-guard/`.
 
--## Arquitectura Memory Guard
+## Arquitectura Memory Guard
 
 ### Contrato Unificado
 
@@ -16,9 +16,9 @@ Memory Guard (memory-guard.md)
     ├── Carga persistence-contract.md → Resuelve el modo de persistencia
     ├── Carga convention.md           → Prepara rutas y schema
     │
-    ├── Ejecuta inline → plan     (draft → gate humano obligatorio → lock)
-    ├── Ejecuta inline → execute  (tasks.md + implementación; delega si > 10 tareas y host soporta)
-    └── Ejecuta inline → verify   (tests + archive como Paso 9)
+    ├── Ejecuta inline → plan     (intake → draft → gate humano obligatorio → lock)
+    ├── Ejecuta inline → execute  (tasks.md + SESSION.md + TDD; delega si > 10 tareas y host soporta)
+    └── Ejecuta inline → verify   (verify-crit + glossary-check + mark-rf + tests + archive)
 ```
 
 ### Módulos del Memory Guard
@@ -42,6 +42,9 @@ Los contratos compartidos se distribuyen en dos directorios:
 | `persistence-contract.md` | Contrato de persistencia: inline vs delegada, protocolo de comunicación |
 | `context-injection.md` | Dependencias de contexto por fase y secuencia de ejecución |
 | `test-runner-detection.md` | Pseudocódigo para la detección automática del test runner del proyecto |
+| `spec-intake.md` | Protocolo Doubt-Driven Intake (entrevista guiada por la duda y redacción de RF-XXX) |
+| `definition-of-done.md` | Barra condensada de calidad y completitud para revisión en VERIFY |
+| `security-checklist.md` | Checklist condensado de seguridad (entradas, auth, secrets y OWASP) para VERIFY |
 
 ### Autodetección y Delegación Inteligente
 
@@ -70,7 +73,7 @@ El registry escanea los directorios global (`$HOME/.skills-custom`) y local (`./
 
 ### Compilación Estática (Target OpenCode)
 Los modelos de entrada tienden a sufrir de "pereza de herramientas" y les cuesta inferir que deben leer el contexto dinámicamente si no se les inyecta explícitamente en el *system prompt*.
-Además, el empaquetador reescribe dinámicamente las directivas de los *slash commands* (como `apply.md`) para usar lenguaje imperativo (ej. `INSTRUCCIÓN CRÍTICA: DEBES usar tu herramienta read_file INMEDIATAMENTE en la ruta...`), forzando al modelo a realizar el *tool-calling* esperado.
+Además, el empaquetador reescribe dinámicamente las directivas de los *slash commands* para usar lenguaje imperativo, forzando al modelo a realizar el *tool-calling* esperado.
 
 ### Context Streaming (Targets Avanzados)
 Para modelos de frontera como Antigravity CLI y OpenCode, el empaquetador evita el inlining pesado. Despliega un *system prompt* minimalista conservando la filosofía de **Lazy Loading** (Context Streaming). El agente carga dinámicamente las habilidades compartidas y específicas bajo demanda, respetando las referencias modulares limpias para mantener la ventana de contexto sumamente ligera.
@@ -92,11 +95,13 @@ El archivo `state.ini` es el núcleo del sistema de estados. Se encuentra en:
 ```ini
 [Metadata]
 last_updated = 2026-07-02T10:30:00.000000
+schema_version = 2
 
 [Transaction]
 txn_status = idle          ; idle | in_progress
 txn_phase = None           ; fase actual si in_progress, sino None
 txn_started_at = None
+base_commit = 0d9d308...   ; SHA capturado en BEGIN para validación de ancestría Git
 
 [Graph]
 current_phase = plan       ; Descriptivo: última fase completada
@@ -116,14 +121,14 @@ Cada fase del agente se ejecuta como una transacción ACID atómica gobernada es
 IDLE → BEGIN → EXECUTE → COMMIT (éxito) o ROLLBACK (fallo) → IDLE
 ```
 
-El ciclo de vida de la transacción exige la actualización de los nuevos campos transaccionales obligatorios en `state.ini`:
+El ciclo de vida de la transacción exige la actualización de los campos transaccionales obligatorios en `state.ini`:
 
 | Paso | Qué ocurre |
 |------|-----------|
-| **BEGIN** | Registra el inicio marcando `txn_status: in_progress`, `txn_phase: {fase}` y capturando el timestamp actual en `txn_started_at` dentro de `state.ini`. |
+| **BEGIN** | Registra el inicio marcando `txn_status: in_progress`, `txn_phase: {fase}`, `base_commit` y capturando el timestamp actual en `txn_started_at` dentro de `state.ini`. |
 | **EXECUTE** | El agente ejecuta la fase encomendada, persistiendo los artefactos generados (código, diseño, specs) en disco de forma segura. |
-| **COMMIT** | Consolida la operación. Actualiza atómicamente `current_phase` y `lock_phase`, mueve la fase a `completed_phases`, y reinicia `txn_status: idle` y `txn_phase: null`. |
-| **ROLLBACK** | Si ocurre un fallo, aborta seteando `txn_status: failed`, dejando sin alterar el registro de fases para preservar la integridad estructural del DAG. |
+| **COMMIT** | Consolida la operación. Actualiza atómicamente `current_phase` y `lock_phase`, mueve la fase a `completed_phases`, y reinicia `txn_status: idle` y `txn_phase: None`. |
+| **ROLLBACK** | Si ocurre un fallo, aborta restaurando `txn_status: idle` y `txn_phase: None`, liberando el lock de fase y dejando sin alterar el registro de fases para preservar la integridad estructural del DAG. |
 
 **Anti-batching por protocolo**: Cada fase requiere su propio ciclo BEGIN → COMMIT ineludiblemente. Al ser `txn_phase` un valor escalar y no una lista, es mecánicamente imposible ejecutar múltiples fases bajo una misma transacción.
 
@@ -134,7 +139,7 @@ Una vez que el estado es exitosamente consolidado en `state.ini`, el protocolo e
 
 ### Recovery Automático
 
-Al detectar un `state.ini` con `txn_status: in_progress` (crash durante ejecución):
+Al detectar un `state.ini` con `txn_status: in_progress` y `lock_state: STALE` (crash durante ejecución):
 
 1. Verifica si el artefacto de `txn_phase` se persistió en disco
 2. Si **SÍ** → ejecuta COMMIT (la fase se completó pero el estado no se persistió)
@@ -146,7 +151,7 @@ Al detectar un `state.ini` con `txn_status: in_progress` (crash durante ejecuci�
 
 **Consistencia (Consistency):** El schema de `state.ini` v2 está validado. Las transiciones siguen un orden estricto definido por el grafo de dependencias y los campos transaccionales garantizan detección de estado intermedio.
 
-**Aislamiento (Isolation):** Cada cambio tiene su propio `state.ini`. Múltiples cambios pueden ejecutarse en paralelo sin interferir entre sí.
+**Aislamiento (Isolation):** Cada cambio tiene su propio `state.ini` y `.lock` POSIX. Múltiples cambios pueden ejecutarse en paralelo sin interferir entre sí.
 
 **Durabilidad (Durability):** El estado persiste en el filesystem del proyecto. Sobrevive a recargas de sesión, compactaciones de contexto y reinicios del IDE. Los campos transaccionales permiten recovery automático.
 
@@ -154,42 +159,46 @@ Al detectar un `state.ini` con `txn_status: in_progress` (crash durante ejecuci�
 
 El Memory Guard detecta cambios concurrentes mediante:
 
-1. Lectura del `state.ini` antes de cada transacción
-2. Verificación del campo `lock_phase` (única fase autorizada)
-3. Bloqueo de fases si `status` es `blocked`
-4. Detección de transacciones incompletas (`txn_status: in_progress`)
+1. Lectura del `state.ini` vía `sg status` antes de cada transacción
+2. Verificación del campo `lock_phase` (única fase autorizada) y `lock_state` (`FREE` | `ACTIVE` | `STALE`)
+3. Detección de transacciones en curso (`txn_status: in_progress`)
 
 ### Migración v1 → v2
 
-> **Nota histórica:** La migración v1→v2 de `state.ini` a `state.ini` fue completada. Los archivos `state.ini` actuales ya usan el schema basado en INI con secciones `[Transaction]`, `[Graph]` y `[Session]`. No hay migración automática pendiente.
+> **Nota histórica:** Los archivos `state.ini` actuales usan el schema v2 basado en INI con 3 fases (`plan`, `execute`, `verify`) y secciones `[Metadata]`, `[Transaction]`, `[Graph]`, `[Gate]`, `[Scope]` y `[Session]`. Si se detecta un `state.ini` con `schema_version = 1`, `sg migrate --change <c>` o `sg begin` lo migra automáticamente a v2.
 
 ---
 
-## Capa `sg.py` — CLI, Gate Humano y Hotfix
+## Capa `sg` (`spec_guard.cli`) — CLI, Gate Humano y Hotfix
 
-`sg.py` es el único punto de entrada CLI de alto nivel recomendado para la interacción con State Guard. Actúa como un wrapper seguro que encapsula las llamadas a `state_manager.py`, formateando la salida en JSON estándar y administrando los mecanismos de autorización humana fuera de banda.
+`sg` (`spec_guard/cli.py`, con shim en `scripts/sg.py`) es el único punto de entrada CLI de alto nivel para la interacción con SpecGuard. Actúa como un wrapper seguro que encapsula las llamadas a `state_manager.py`, formateando la salida en JSON estándar y administrando los mecanismos de autorización humana.
 
-### Arquitectura de `sg.py`
+### Arquitectura de `sg`
 
-- **Wrapper JSON**: Todas las operaciones para agentes devuelven respuestas JSON estructuradas y respetan los códigos de salida numéricos.
-- **Acceso Exclusivo**: Mutar el manifiesto `state.ini` debe realizarse a través de `sg.py` para asegurar que las validaciones de esquema, bloqueos transaccionales y autorizaciones de gate se apliquen de forma consistente.
+- **Wrapper JSON (100% Python Stdlib)**: Todas las operaciones devuelven respuestas JSON estructuradas y respetan los códigos de salida numéricos sin depender de paquetes externos.
+- **Acceso Exclusivo**: Mutar el manifiesto `state.ini` debe realizarse a través de `sg` para asegurar que las validaciones de esquema, bloqueos transaccionales y autorizaciones de gate se apliquen de forma consistente.
 
-### Mecanismo de Gate Humano Out-of-Band
+### Modos de Compuerta Humana (`gate.mode: chat | strict`)
 
-El Gate Humano asegura que los agentes no puedan avanzar de la fase de `plan` a `execute` sin la confirmación explícita de un usuario en una terminal real.
+El Gate Humano asegura que los agentes no puedan avanzar de la fase de `plan` a `execute` sin la confirmación explícita de un usuario:
 
-1. **Aprobación fuera de banda**: El comando `sg plan-approve --change <nombre>` genera un token aleatorio que es impreso **únicamente** en la terminal de control (`/dev/tty`). El token nunca viaja por `stdout` ni se almacena en plano.
-2. **Almacenamiento seguro**: Solo se guarda el hash SHA-256 del token en la sección `[Gate]` del manifiesto `state.ini`.
-3. **Confirmación en 2 pasos**: El humano debe ejecutar en la terminal interactiva `sg plan-confirm --change <nombre> --token <CODIGO>`. Si el hash coincide, el gate queda marcado como autorizado y se permite que el comando `commit` del agente promueva la fase.
+1. **Modo `chat` (Predeterminado — Cero Fricción)**:
+   - El agente presenta el plan y ejecuta un **STOP** obligatorio en la conversación.
+   - Una vez que el usuario aprueba en el chat, el agente ejecuta `sg commit --change <nombre> --next-phase execute --approval-text "<respuesta textual del humano>"`.
+   - El middleware verifica que `--approval-text` contenga una expresión de aprobación válida y la registra en `[Gate].plan_approved_by`.
+2. **Modo `strict` (Out-of-Band en `/dev/tty`)**:
+   - Configurado con `gate.mode: strict` en `.spec-guard/config.yaml` (o `SPECGUARD_GATE_MODE=strict`).
+   - El comando `sg plan-approve --change <nombre>` genera un token aleatorio impreso **únicamente** en la terminal física (`/dev/tty`) y almacena solo su hash SHA-256 fuera del workspace (`~/.spec-guard-gate/`).
+   - El humano confirma en su terminal interactiva con `sg plan-confirm --change <nombre> --token <CODIGO>` (con revocación automática tras 3 intentos fallidos).
 
 ### Flujo de Hotfix Bypass
 
 En situaciones de emergencia donde un error debe ser corregido sin pasar por la fase completa de planificación:
 
 1. El humano inicia un hotfix ejecutando `sg hotfix-init --change <nombre> --reason "..."`.
-2. Al igual que el gate de plan, este comando imprime un token en `/dev/tty`.
+2. Al igual que el gate en modo `strict`, este comando imprime un token en `/dev/tty`.
 3. El humano confirma con `sg hotfix-confirm --change <nombre> --token <CODIGO>`.
-4. Esto registra la autorización del hotfix en `[Gate]` indicando la razón, permitiendo a `begin` saltar directamente a `execute`.
+4. Esto registra la autorización del hotfix en `[Gate]` indicando la razón y avanza `lock_phase` directamente a `execute`.
 
 ### Integración de Hooks de Git (`sg install-hooks`)
 
@@ -197,12 +206,15 @@ El comando `sg install-hooks` instala un hook `post-commit` en el repositorio Gi
 - **Función**: Ejecuta automáticamente `sg status` después de cada commit de git para mostrar el estado actual del manifiesto.
 - **Comportamiento**: Es estrictamente **informativo** y no bloquea las operaciones de git, a diferencia del gate de `commit` que sí es bloqueante.
 
-### Subcomandos Principales de `sg.py`
+### Subcomandos Principales de `sg`
 
-- **Validación de Especificaciones**: `sg validate-spec --change <nombre>` valida estructuralmente `objective.md` y `design.md` comprobando que no contengan preguntas abiertas bloqueantes (`[!]`), placeholders ni secciones faltantes (incluyendo la sección obligatoria `### Fuera del Alcance` / `Out of Scope`) antes de habilitar el gate humano.
-- **Trazabilidad de Criterios (CRIT-XX)**: `sg verify-crit --change <nombre>` (o `.spec-guard/bin/verify-crit.sh <nombre>`) extrae determinísticamente los criterios `CRIT-XX` de `tasks.md`, `design.md` u `objective.md` y, en modo raíz, de los RF del scope en `requirements.md` (`CRIT-<rf>-<n>`). Comprueba si están marcados como `[automated]` o `[manual]`. Para cada criterio automatizable, audita la base de pruebas (`tests/`, `test/`, `spec/`, `src/`) verificando que exista un test con dicho identificador (`CRIT-01` o `test_crit_01`). Retorna exit code 0 si todos los criterios automatizables tienen tests, o código 2 (bloqueante) si hay criterios huérfanos.
-- **Cursor de Sesión Volátil (`SESSION.md`)**: `sg session-checkpoint --change <nombre> [--action <acción>]` genera o actualiza atómicamente el archivo cursor `.spec-guard/SESSION.md` (la raíz del repositorio queda limpia). Registra el `Base commit` capturado en `begin`, la fase activa, el estado de trabajo y la próxima acción recomendada, comprobando la validez de ancestría Git (`git merge-base --is-ancestor <base-commit> HEAD`) para prevenir desincronizaciones tras compactaciones de contexto sin consumir miles de tokens.
-- **Bootstrap Universal con `AGENTS.md`**: `scripts/init.sh` (o `sg-init`) inicializa un repositorio con el contrato SDD en `AGENTS.md` mediante bloques delimitados `<!-- BEGIN SPECGUARD -->` ... `<!-- END SPECGUARD -->`, preservando cualquier directiva preexistente del equipo, y enlaza `CLAUDE.md` a `@AGENTS.md`.
+- **Ignición de Contexto (`sg context`)**: Extrae en JSON el glosario estricto, el stack obligatorio, los roles, el *Out of Scope* y el progreso de RFs desde los documentos raíz (`requirements.md` y `design.md`).
+- **Validación de Especificaciones (`sg validate-spec`)**: Valida estructuralmente los documentos raíz (`requirements.md` y `design.md`) o `objective.md` y `design.md` (modo legacy) comprobando que no contengan preguntas abiertas bloqueantes (`[!]`), placeholders sin resolver ni secciones faltantes (incluyendo `Fuera del Alcance` / `Out of Scope`).
+- **Auditoría de Glosario (`sg glossary-check`)**: Contrasta el diff de Git o rutas específicas contra la tabla de términos permitidos y sinónimos prohibidos de `requirements.md §2`.
+- **Trazabilidad de Criterios (`sg verify-crit`)**: Extrae determinísticamente los criterios `CRIT-XX` de `requirements.md` (RFs en scope) o `tasks.md`/`design.md`/`objective.md` y comprueba en `tests/`, `test/`, `spec/`, `src/` que cada criterio `[automated]` cuente con un test asociado. Retorna exit code 0 si todos están cubiertos, o código 2 (bloqueante) si hay criterios huérfanos.
+- **Cierre Determinista de RFs (`sg mark-rf`)**: Durante la fase `verify`, valida que todos los criterios automatizados del RF estén cubiertos por tests y marca `### [x] RF-XXX` en `requirements.md`.
+- **Cursor de Sesión Volátil (`sg session-checkpoint`)**: Genera o actualiza atómicamente `.spec-guard/SESSION.md` (~250 tokens) y valida la ancestría Git (`git merge-base --is-ancestor <base-commit> HEAD`).
+- **Bootstrap Universal (`sg init`)**: Inicializa `requirements.md`, `design.md`, `AGENTS.md`, `CLAUDE.md` y `.spec-guard/` (incluyendo `.spec-guard/bin/verify-crit.sh`).
 - **Gestión de Agent Hooks**: `sg hooks-start`, `sg hooks-stop` y `sg hooks-status` permiten iniciar, detener y verificar el estado del daemon de observabilidad de filesystem.
 
 ### Tabla de Códigos de Salida (Exit Codes)
@@ -211,10 +223,10 @@ El comando `sg install-hooks` instala un hook `post-commit` en el repositorio Gi
 |--------|-----------|-------------|
 | `0` | `EXIT_OK` | Operación exitosa. |
 | `1` | `EXIT_GENERIC` | Error genérico o `state.ini` no encontrado. |
-| `2` | `EXIT_LOCK_CONFLICT` | Conflicto de lock activo por otra sesión (reintentable). |
+| `2` | `EXIT_LOCK_CONFLICT` / `CRIT_UNCOVERED` | Conflicto de lock activo por otra sesión o criterios `CRIT-XX` sin test en `verify-crit`. |
 | `3` | `EXIT_BAD_TRANSITION` | Transición inválida en el DAG de fases (no reintentar). |
-| `4` | `EXIT_VALIDATION` | Datos de entrada inválidos (ej. summary excede límite, spec incompleto). |
-| `5` | `EXIT_GATE_REQUIRED` | Gate humano no cumplido; requiere intervención en terminal. |
+| `4` | `EXIT_VALIDATION` | Datos de entrada inválidos, violación crítica de glosario o spec incompleto. |
+| `5` | `EXIT_GATE_REQUIRED` | Gate humano no cumplido o token incorrecto/bloqueado. |
 
 ---
 
@@ -231,38 +243,46 @@ El comando `sg install-hooks` instala un hook `post-commit` en el repositorio Gi
 | Campo | Descripción |
 |-------|-------------|
 | `schema` | Versión del schema del agente. Valor actual: `spec-driven` |
-| `context` | Descripción del stack tecnológico del proyecto |
-| `rules` | Reglas específicas por fase (proposal, specs, design, tasks, apply, verify, archive) |
-| `glossary.terms` | (Opcional) Definiciones de términos del dominio |
+| `gate.mode` | Modo de compuerta humana: `chat` (default, cero fricción) o `strict` (tokens en `/dev/tty`) |
+| `glossary.severity` | Severidad de sinónimos prohibidos en código general: `warning` (default) o `critical` |
+| `rules` | Reglas específicas por fase (`plan`, `execute`, `verify`, `archive`) |
 
 ### Convenciones de Nomenclatura
 
-El sistema usa **kebab-case** para todas las configuraciones:
+El sistema usa **kebab-case** para los nombres de cambios transaccionales:
 
 ```yaml
+schema: spec-driven
+
+gate:
+  mode: chat
+
 rules:
-  apply:
-    - Usar rutas en kebab-case para nombres de cambios
-    - Los nombres de archivos de skills también usan kebab-case
+  change_naming: kebab-case
+  execute:
+    - Seguir patrones y convenciones existentes
+  verify:
+    - build_command: pytest
+    - Criterios CRIT-XX automatizables deben contar con tests
 ```
 
 ### Scripts de Mantenimiento y Desarrollo
 
 El directorio `scripts/` incluye herramientas adicionales de soporte:
-- `cleanup.sh`: Desinstala stubs y limpia los datos temporales del framework en los diferentes agentes de IA. Soporta el flag `--hard` para purgar históricos.
-- `install_test.sh`: Suite de tests unitarios y de integración para validar el correcto funcionamiento del script de instalación en diferentes entornos.
+- `cleanup.sh`: Desinstala skills, symlinks y limpia las inyecciones de configuración de SpecGuard en los diferentes agentes de IA (`~/.agents/skills/spec-guard`, `~/.gemini/GEMINI.md`, `opencode.jsonc`).
+- `tests/install_test.sh`: Suite de tests de integración para validar el correcto funcionamiento del script de instalación.
 
-### Parámetro test_command
+### Parámetro build_command / test_command
 
-Define el comando para ejecutar tests durante la fase de verificación:
+Define el comando para ejecutar pruebas o build durante la fase de verificación:
 
 ```yaml
 rules:
   verify:
-    test_command: "npm test"  # o "pytest", "cargo test", etc.
+    build_command: "pytest"  # o "npm test", "cargo test", etc.
 ```
 
-Si no se define, la verificación reportará que los tests no pudieron ejecutarse automáticamente.
+Si no se define, la verificación autodetectará el test runner según `phases/_shared/test-runner-detection.md`.
 
 ---
 
@@ -293,14 +313,14 @@ El comando `/split` analiza una proposal monolítica y la divide en sub-cambios 
 
 ### /ff — Avance Rápido (Fast-Forward)
 
-El comando `/ff` permite ejecutar secuencialmente las fases de planificación y ejecución (`plan`, `execute`) sin pausas intermedias (el gate humano de `plan` sigue siendo obligatorio).
+El comando `/ff` permite ejecutar secuencialmente las fases de planificación y ejecución (`plan`, `execute`) como transacciones independientes (el gate humano de `plan` sigue siendo obligatorio).
 
 **Cuándo usarlo:**
 
-- Al iniciar un cambio nuevo bien definido donde no necesitas revisar manualmente cada artefacto intermedio.
+- Al iniciar un cambio nuevo bien definido donde deseas avanzar automáticamente de `plan` a `execute` tras aprobar el gate.
 
 **Anti-Batching Transaccional:**
-A diferencia de pedirle al LLM que "haga todas las fases de una vez" en un solo prompt (lo que corrompe el DAG), `/ff` ejecuta 4 transacciones secuenciales independientes. Cada fase tiene su propio ciclo BEGIN → COMMIT, y si el agente crashea entre la transacción 2 y la 3, el Recovery Protocol continúa automáticamente desde donde quedó.
+A diferencia de pedirle al LLM que "haga todas las fases de una vez" en un solo prompt (lo que corrompe el DAG), `/ff` ejecuta **2 transacciones secuenciales independientes** (`plan` → `execute`). Cada fase tiene su propio ciclo BEGIN → COMMIT, y si el agente crashea entre ambas transacciones, el Recovery Protocol continúa automáticamente desde donde quedó.
 
 ### /checkpoint — Guardado de Estado
 
@@ -319,7 +339,7 @@ El checkpoint es **agnóstico al DAG**: puede ejecutarse en cualquier momento si
 **Cuándo usarlo manualmente:**
 
 - Antes de realizar operaciones riesgosas
-- Al interrumpir un lote de `apply` para preservar el estado
+- Al interrumpir un lote de `execute` para preservar el estado
 - Al restablecer el contexto de trabajo forzando al LLM a recargar el panorama
 
 **Ejemplo de uso:**
@@ -328,16 +348,16 @@ El checkpoint es **agnóstico al DAG**: puede ejecutarse en cualquier momento si
 /checkpoint
 ```
 
-### Archive (Paso 9 de VERIFY — no es un comando separado)
+### Archive (Paso final de VERIFY — no es un comando separado)
 
-El archivado de un cambio ocurre automáticamente como **Paso 9** dentro de la fase `verify`, una vez que el veredicto es APROBADO. No existe un slash command `/archive` independiente — invocar `/continue` cuando `lock_phase=verify` ejecuta todo el flujo de verificación y archivado en una sola operación.
+El archivado de un cambio ocurre automáticamente dentro de la fase `verify`, una vez que el veredicto es APROBADO. No existe un slash command `/archive` independiente — invocar `/continue` cuando `lock_phase=verify` ejecuta todo el flujo de verificación y archivado en una sola operación.
 
 **Requisito previo para que el archivado no falle:**
 
 1. Ejecutar la fase `verify` (`/continue` con `lock_phase=verify`).
 2. Antes de que `verify` pueda archivar, el árbol de trabajo git debe estar limpio — todos los cambios de código commiteados (`git add . && git commit -m "..."`).
 
-El Paso 9 fusiona las specs delta (`changes/{nombre}/specs/`) en las specs principales (`.spec-guard/specs/`) y mueve el directorio del cambio a `.spec-guard/changes/archive/YYYY-MM-DD-{nombre}/`.
+En el **2-File Root Protocol**, el archivado cierra cada RF cubierto ejecutando `sg mark-rf`, archiva y purga `.spec-guard/SESSION.md`, y mueve el directorio del cambio a `.spec-guard/changes/archive/YYYY-MM-DD-{nombre}/`. En modo legacy, fusiona las specs delta (`changes/{nombre}/specs/`) en `.spec-guard/specs/`.
 
 ### /review — Auditoría Estática
 
@@ -384,28 +404,33 @@ Este comando **elimina permanentemente** todo el trabajo no commiteado en el dir
 ## Estructura de Archivos
 
 ```text
-.spec-guard/
-├── config.yaml                    ← Configuración del proyecto
-├── skill-registry.md              ← Índice dinámico de skills
-├── specs/                         ← Specs actuales (fuente de verdad)
-│   └── {dominio}/
-│       └── spec.md
-└── changes/                       ← Cambios activos y archivados
-    ├── archive/
-    │   └── YYYY-MM-DD-{change}/
-    └── {change-name}/
-        ├── state.ini              ← Estado del DAG + sesión (manejado por middleware)
-        ├── .lock                  ← Lock de fase (manejado por middleware)
-        ├── .write-lock            ← Mutex de escritura de archivo (manejado por middleware)
-        ├── proposal.md            ← Propuesta
-        ├── exploration.md         ← Investigación inicial (opcional)
-        ├── specs/                 ← Specs delta
-        │   └── {dominio}/
-        │       └── spec.md
-        ├── design.md              ← Diseño técnico
-        ├── tasks.md               ← Checklist de tareas
-        ├── verify-report.md       ← Reporte de verificación
-        └── (otros artefactos)
+<raíz-del-proyecto>/
+├── requirements.md                ← PRD raíz (Visión, Glosario Estricto, Roles, RF-XXX, Out of Scope)
+├── design.md                      ← SAD raíz (Stack Obligatorio, Modelo de Datos, Endpoints, Reglas)
+├── AGENTS.md                      ← Contrato universal de agentes SDD
+├── CLAUDE.md                      ← Puntero @AGENTS.md
+└── .spec-guard/
+    ├── config.yaml                ← Configuración del proyecto (gate.mode, glossary, rules)
+    ├── SESSION.md                 ← Cursor volátil de bajo consumo (~250 tokens, durante EXECUTE)
+    ├── bin/
+    │   └── verify-crit.sh         ← Script local de auditoría determinista CRIT-XX
+    ├── skill-registry.md          ← Índice dinámico de custom skills (opcional)
+    ├── specs/                     ← Specs actuales (modo legacy)
+    │   └── {dominio}/
+    │       └── spec.md
+    └── changes/                   ← Cambios activos y archivados
+        ├── archive/
+        │   └── YYYY-MM-DD-{change}/
+        └── {change-name}/
+            ├── state.ini          ← Estado del DAG + Gate + Scope + Session (manejado por sg)
+            ├── .lock              ← Lock POSIX de fase (manejado por middleware)
+            ├── .write-lock        ← Mutex de escritura de archivo (manejado por middleware)
+            ├── objective.md       ← Objetivo y Out of Scope (modo legacy)
+            ├── design.md          ← Diseño técnico del cambio (modo legacy)
+            ├── specs/             ← Specs delta (modo legacy)
+            ├── tasks.md           ← Checklist de tareas con trazabilidad CRIT-XX
+            ├── SESSION.md         ← Copia histórica del cursor de sesión
+            └── verify-report.md   ← Reporte de verificación
 ```
 
 ---
@@ -414,15 +439,15 @@ Este comando **elimina permanentemente** todo el trabajo no commiteado en el dir
 
 ### Idioma
 
-Todos los artefactos deben escribirse en **español (castellano)**. Esto incluye:
+Siguiendo el contrato `AGENTS.md`:
 
-- Propuestas y especificaciones
-- Diseños y tareas
-- Descripciones de código
+- **Código fuente, comentarios, mensajes de error y mensajes de commit**: **Inglés (English)**.
+- **Conversación en chat con el humano**: Idioma preferido del usuario (español por defecto en este entorno).
+- **Artefactos de especificación y reportes (`requirements.md`, `design.md`, `objective.md`, `tasks.md`)**: Español (castellano), respetando estrictamente los términos canónicos del Glosario Estricto (`requirements.md §2`).
 
 ### Formato de Specs
 
-Las specs usan el formato **GIVEN/WHEN/THEN**:
+Las specs delta (modo legacy) usan el formato **GIVEN/WHEN/THEN**:
 
 ```markdown
 #### Escenario: Nombre del escenario
@@ -431,6 +456,8 @@ Las specs usan el formato **GIVEN/WHEN/THEN**:
 - THEN resultado esperado
 - AND resultado adicional
 ```
+
+En el **2-File Root Protocol** (modo predeterminado), cada requerimiento funcional (`### [ ] RF-XXX: ...` en `requirements.md`) desglosa criterios numerados `CRIT-<rf>-<n>` clasificados como `[automated]` o `[manual]`.
 
 ### Palabras Clave RFC 2119
 
@@ -444,20 +471,20 @@ Las specs usan el formato **GIVEN/WHEN/THEN**:
 
 ## Integración con Herramientas
 
-State Guard soporta múltiples agentes de IA. El Memory Guard se adapta automáticamente a las capacidades de cada host:
+SpecGuard soporta múltiples agentes de IA. El Memory Guard se adapta automáticamente a las capacidades de cada host:
 
 | Herramienta | Ejecución Inline | Sub-agentes | Delegación Inteligente |
 |------------|:----------------:|:-----------:|:---------------------:|
-| OpenCode | ✅ | ✅ | Apply pesados |
-| Antigravity CLI | ✅ | ✅ | Apply pesados |
+| OpenCode | ✅ | ✅ | Execute pesados (> 10 tareas) |
+| Antigravity | ✅ | ✅ | Execute pesados (> 10 tareas) |
 
-La instalación varía según la herramienta. Ejecuta `scripts/install.sh` y selecciona tu herramienta. Cada integración es un stub mínimo que carga `memory-guard.md` como contrato central.
+Ejecuta `bash scripts/install.sh` para instalar de forma universal el CLI `sg`, las skills nativas y los contratos de arranque.
 
 ---
 
 ## Guía de Integración: Custom Skills
 
-El framework de State Guard es extensible mediante "Custom Skills", permitiendo integrar herramientas especializadas que no son parte nativa del framework (por ejemplo, herramientas de desarrollo frontend, diseño o base de datos).
+El framework de SpecGuard es extensible mediante "Custom Skills", permitiendo integrar herramientas especializadas que no son parte nativa del framework (por ejemplo, herramientas de desarrollo frontend, diseño o base de datos).
 
 ### 1. Ubicación Física
 
@@ -500,73 +527,6 @@ Actúas como un desarrollador y diseñador de componentes Vue/React/HTML...
 # Reglas
 1. Siempre sigue fielmente los colores y el design system nativo.
 2. Evita usar frameworks pesados si no se solicita.
-```
-
----
-
-## Servidor MCP
-
-SpecGuard expone un servidor MCP nativo sobre `stdio` (`spec_guard.mcp.server`), permitiendo a clientes compatibles (ej. Claude Desktop, Cursor, OpenCode) interactuar con herramientas auxiliares, recursos URI y de verificación de estado.
-
-### Herramientas Expuestas (Tools)
-
-| Tool | Argumentos | Descripción | Salida |
-|------|------------|-------------|--------|
-| `get_next_task` | `change: str` | Retorna la próxima tarea pendiente de `tasks.md` para el change especificado. | JSON con el objeto tarea o `null` si no hay pendientes. |
-| `verify_phase_gate` | `change: str, phase: str` | Verifica si la fase solicitada está autorizada por el DAG antes de ejecutarla. | JSON con `{"authorized": true/false}`. |
-| `mark_task_completed` | `change: str, task_id: str` | Marca una tarea como completada por ID en `tasks.md` (idempotente). | JSON con el resultado de la actualización. |
-| `get_active_changes` | ninguna | Lista todos los cambios activos registrados y su fase actual. | JSON con array de cambios activos. |
-
-### Recursos Expuestos (Resources)
-
-SpecGuard expone las especificaciones de diseño como recursos MCP URI de solo lectura:
-- `spec://{change}/objective` — Contenido de `objective.md`.
-- `spec://{change}/design` — Contenido de `design.md`.
-
-### Decisiones de Diseño
-
-- **Comandos Transaccionales**: `begin`, `commit`, `rollback`, `checkpoint` **NO** se exponen como herramientas MCP. Se mantienen como invocaciones CLI (`sg begin`, `sg commit`, etc.) para preservar la separación explícita entre el canal MCP de utilidades y la capa de control transaccional estricta.
-- **Gates Humanos**: `plan-approve`, `plan-confirm`, `hotfix-init`, `hotfix-confirm` tampoco se exponen por MCP; son comandos exclusivos de terminal interactiva para garantizar interacción humana out-of-band con tokens SHA-256 y protección de 3 intentos.
-
-### Configuración en Clientes MCP
-
-#### Opción A: Vía `uvx` (Recomendada para zero-install)
-
-Agrega el siguiente bloque a tu archivo de configuración de cliente MCP (`claude_desktop_config.json` o equivalente):
-
-```json
-{
-  "mcpServers": {
-    "spec-guard": {
-      "command": "uvx",
-      "args": [
-        "git+https://github.com/fdomerlo/spec-guard.git"
-      ]
-    }
-  }
-}
-```
-
-#### Opción B: Instalación Local Aislada
-
-Clona e instala en modo editable con `uv` o `pip`:
-
-```bash
-git clone https://github.com/fdomerlo/spec-guard.git ~/.local/share/mcp-servers/spec-guard
-cd ~/.local/share/mcp-servers/spec-guard
-uv venv && uv pip install -e '.[mcp]'
-```
-
-Configuración en el cliente MCP:
-
-```json
-{
-  "mcpServers": {
-    "spec-guard": {
-      "command": "/ruta/a/tu/home/.local/share/mcp-servers/spec-guard/.venv/bin/spec-guard-mcp"
-    }
-  }
-}
 ```
 
 ---
