@@ -4,8 +4,8 @@ import json
 from argparse import Namespace
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../scripts")))
-import state_manager
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from spec_guard.core import state_manager
 
 
 def setup_change(tmpdir, objective_content=None, design_content=None):

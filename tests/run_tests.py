@@ -13,7 +13,6 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
 sys.path.insert(0, str(REPO_ROOT))
 
 # Si pytest existe, ejecutarlo directamente
@@ -92,6 +91,10 @@ def _create_mini_pytest():
         def readouterr(self):
             val_out = self._out.getvalue()
             val_err = self._err.getvalue()
+            self._out.seek(0)
+            self._out.truncate(0)
+            self._err.seek(0)
+            self._err.truncate(0)
             return types.SimpleNamespace(out=val_out, err=val_err)
 
         def close(self):

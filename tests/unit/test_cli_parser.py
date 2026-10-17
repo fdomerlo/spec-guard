@@ -10,9 +10,8 @@ import pytest
 
 REPO_PKG_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.insert(0, REPO_PKG_ROOT)
-sys.path.insert(0, os.path.join(REPO_PKG_ROOT, "scripts"))
 
-import state_manager  # noqa: E402  (scripts shim -> spec_guard.core.state_manager)
+from spec_guard.core import state_manager  # noqa: E402
 from spec_guard import cli  # noqa: E402
 
 

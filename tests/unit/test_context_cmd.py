@@ -73,30 +73,23 @@ def test_crit_02_docs_sync_and_no_mcp():
     assert "sg context [--json]" not in readme
     assert "sg glossary-check [--staged]" not in readme
     assert not manual.lstrip().startswith("-##"), "MANUAL.md should not have '-##' typo"
-    assert "spec-intake.md" in manual
-    assert "definition-of-done.md" in manual
-    assert "security-checklist.md" in manual
     assert "txn_status: failed" not in manual
 
 
 def test_crit_03_skills_and_install_sync():
     repo_root = Path(__file__).resolve().parents[2]
-    skill_main = (repo_root / "skills" / "spec-guard" / "SKILL.md").read_text(encoding="utf-8")
-    skill_ff = (repo_root / "skills" / "ff" / "SKILL.md").read_text(encoding="utf-8")
-    skill_status = (repo_root / "skills" / "status" / "SKILL.md").read_text(encoding="utf-8")
-    skill_ckpt = (repo_root / "skills" / "checkpoint" / "SKILL.md").read_text(encoding="utf-8")
-    install_sh = (repo_root / "scripts" / "install.sh").read_text(encoding="utf-8")
+    skill_main = (repo_root / "SKILL.md").read_text(encoding="utf-8")
+    install_sh = (repo_root / "install.sh").read_text(encoding="utf-8")
 
     assert "--approval-text" in skill_main
     assert "sg context" in skill_main
     assert "sg glossary-check" in skill_main
     assert "sg next-rf-id" in skill_main
-    assert "sin gate interactivo" not in skill_ff
-    assert "lock_phase" in skill_status
-    assert "txn_status" in skill_status
-    assert "1. **Automático**" in skill_ckpt
     assert "glossary-check" in install_sh
     assert "context" in install_sh
+    assert not (repo_root / "phases").exists()
+    assert not (repo_root / "skills").exists()
+    assert not (repo_root / "scripts").exists()
 
 
 def test_crit_04_concurrency_test_cleans_up_temp_changes():
@@ -105,24 +98,14 @@ def test_crit_04_concurrency_test_cleans_up_temp_changes():
     assert "cleanup_test_changes" in conc_py
 
 
-
 def test_crit_26_condensed_dod_and_security_references_exist():
     repo_root = Path(__file__).resolve().parents[2]
-    dod = repo_root / "phases" / "_shared" / "definition-of-done.md"
-    sec = repo_root / "phases" / "_shared" / "security-checklist.md"
-    verify_md = repo_root / "phases" / "verify.md"
+    skill_file = repo_root / "SKILL.md"
+    assert skill_file.exists()
 
-    assert dod.exists(), "definition-of-done.md must exist in phases/_shared/"
-    assert sec.exists(), "security-checklist.md must exist in phases/_shared/"
-
-    # Condensed (~40-60 lines, not bloated)
-    assert len(dod.read_text(encoding="utf-8").splitlines()) < 60
-    assert len(sec.read_text(encoding="utf-8").splitlines()) < 60
-
-    # verify.md references them
-    verify_content = verify_md.read_text(encoding="utf-8")
-    assert "definition-of-done.md" in verify_content
-    assert "security-checklist.md" in verify_content
-    assert "glossary-check" in verify_content
+    content = skill_file.read_text(encoding="utf-8")
+    assert "Definition of Done" in content
+    assert "Security Checklist" in content
+    assert "glossary-check" in content
 
 

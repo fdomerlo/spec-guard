@@ -4,10 +4,9 @@ import time
 import tempfile
 import pytest
 
-# Ensure scripts directory is in path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../scripts")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from _lock_utils import with_write_lock, _is_write_lock_stale, try_acquire_lockfile
+from spec_guard.core.locking import with_write_lock, _is_write_lock_stale, try_acquire_lockfile
 
 
 def test_stale_write_lock_dead_pid():

@@ -5,9 +5,9 @@ import configparser
 from argparse import Namespace
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../scripts")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-import state_manager
+from spec_guard.core import state_manager
 
 
 def create_mock_change(tmpdir, change_name="test-change", schema_version="2", status="idle", phase="None"):

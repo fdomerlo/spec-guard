@@ -7,7 +7,7 @@ import tempfile
 import configparser
 import pytest
 
-SG_PY = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../scripts/sg.py"))
+SG_PY = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../spec_guard/cli.py"))
 
 
 def run_with_pty(argv, timeout=2.0):

@@ -6,8 +6,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../scripts")))
-import hook_daemon
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from spec_guard.daemon import hook_daemon
 
 
 def test_should_skip_excluded_prefixes(monkeypatch, tmpdir):

@@ -51,10 +51,10 @@ def test_crit_31_cli_next_rf_id_command(tmpdir):
 
 def test_crit_32_spec_intake_protocol_exists():
     repo_root = Path(__file__).resolve().parents[2]
-    intake_file = repo_root / "phases" / "_shared" / "spec-intake.md"
-    assert intake_file.exists(), "spec-intake.md must exist in phases/_shared/"
+    skill_file = repo_root / "SKILL.md"
+    assert skill_file.exists(), "SKILL.md must exist at repository root"
 
-    content = intake_file.read_text(encoding="utf-8")
+    content = skill_file.read_text(encoding="utf-8")
     assert "INTAKE" in content
     assert "CONFLICT SCAN" in content
     assert "ASK" in content or "DOUBT" in content

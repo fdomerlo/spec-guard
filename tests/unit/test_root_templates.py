@@ -81,6 +81,7 @@ def test_crit_18_init_installs_verify_crit_inside_spec_guard(tmpdir):
 
 
 def test_crit_18_session_checkpoint_writes_inside_spec_guard(monkeypatch, tmpdir, capsys):
+    import configparser
     project = Path(str(tmpdir))
     write_root_project(project, lock_phase="execute")
     monkeypatch.chdir(str(project))
@@ -94,7 +95,9 @@ def test_crit_18_session_checkpoint_writes_inside_spec_guard(monkeypatch, tmpdir
     assert exc.value.code in (0, None)
     res = json.loads(capsys.readouterr().out)
     assert res["ok"] is True
-    assert (project / ".spec-guard" / "SESSION.md").exists()
-    assert (project / ".spec-guard" / "changes" / "demo" / "SESSION.md").exists()
+    assert not (project / ".spec-guard" / "SESSION.md").exists()
+    assert not (project / ".spec-guard" / "changes" / "demo" / "SESSION.md").exists()
     assert not (project / "SESSION.md").exists()
-    assert not (project / "SESSION.md.tmp").exists()
+    cfg = configparser.ConfigParser()
+    cfg.read(project / ".spec-guard" / "changes" / "demo" / "state.ini", encoding="utf-8")
+    assert cfg.get("Session", "next_action") == "Next"

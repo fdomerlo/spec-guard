@@ -12,8 +12,8 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.environ["SPECGUARD_GATE_DIR"] = os.path.join(REPO_ROOT, ".test-gate")
 os.environ["STATEGUARD_GATE_DIR"] = os.path.join(REPO_ROOT, ".test-gate")
 os.environ["SPECGUARD_GATE_MODE"] = "strict"
-SCRIPT = os.path.join(REPO_ROOT, "scripts", "state_manager.py")
-SG_SCRIPT = os.path.join(REPO_ROOT, "scripts", "sg.py")
+SCRIPT = os.path.join(REPO_ROOT, "spec_guard", "core", "state_manager.py")
+SG_SCRIPT = os.path.join(REPO_ROOT, "spec_guard", "cli.py")
 SG_DIR_NAME = ".spec-guard" if os.path.exists(os.path.join(REPO_ROOT, ".spec-guard")) else ".state-guard"
 STATE_PATH = os.path.join(REPO_ROOT, f"{SG_DIR_NAME}/changes/{CHANGE}/state.ini")
 
