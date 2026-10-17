@@ -22,6 +22,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+_PKG_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PKG_ROOT not in sys.path:
+    sys.path.insert(0, _PKG_ROOT)
+
 
 # ─── Resolución del entorno ──────────────────────────────────────────────────
 
@@ -320,7 +324,7 @@ def _audit_criteria(change: str, change_dir: Path) -> dict:
         else:
             code_matches = [
                 l for l in _search_pattern_in_tests(REPO_ROOT, crit_id)
-                if not any(f"changes/{change}/" in l or "SESSION.md" in l or "PLAN-" in l for _ in [0])
+                if not any(f"changes/{change}/" in l or "state.ini" in l or "PLAN-" in l for _ in [0])
                 and root_docs.crit_matches(crit_id, l)
             ]
             if code_matches:
@@ -339,50 +343,105 @@ def _audit_criteria(change: str, change_dir: Path) -> dict:
     return {"results": results, "failures": failures}
 
 
+def _detect_test_command(repo_root: Path, guard_dir: Path) -> str | None:
+    """Resolves the project test runner command from config.yaml or project layout."""
+    cfg_path = guard_dir / "config.yaml"
+    if cfg_path.exists():
+        try:
+            content = cfg_path.read_text(encoding="utf-8")
+            try:
+                import yaml
+                data = yaml.safe_load(content)
+                if isinstance(data, dict):
+                    proj = data.get("project", {})
+                    if isinstance(proj, dict) and proj.get("test_command"):
+                        return str(proj["test_command"]).strip()
+                    if data.get("test_command"):
+                        return str(data["test_command"]).strip()
+            except Exception:
+                pass
+            m = re.search(r"^\s*test_command\s*:\s*['\"]?(.+?)['\"]?\s*$", content, re.M)
+            if m:
+                return m.group(1).strip()
+        except Exception:
+            pass
+
+    if (repo_root / "tests" / "run_tests.py").exists():
+        return f"{sys.executable} tests/run_tests.py"
+    if (repo_root / "pyproject.toml").exists() or (repo_root / "pytest.ini").exists() or (repo_root / "tests").exists():
+        return f"{sys.executable} -m pytest"
+    if (repo_root / "package.json").exists():
+        return "npm test"
+    if (repo_root / "Cargo.toml").exists():
+        return "cargo test"
+    if (repo_root / "go.mod").exists():
+        return "go test ./..."
+    return None
+
+
+def _audit_git_bypasses(repo_root: Path, change: str, base_commit: str) -> list[dict]:
+    """Audits git commits in base_commit..HEAD for code changes lacking change/RF reference."""
+    if not base_commit or not (repo_root / ".git").exists():
+        return []
+
+    try:
+        anc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", base_commit, "HEAD"],
+            cwd=str(repo_root), capture_output=True, text=True,
+        )
+        if anc.returncode != 0:
+            return []
+
+        rev_res = subprocess.run(
+            ["git", "rev-list", "--no-merges", f"{base_commit}..HEAD"],
+            cwd=str(repo_root), capture_output=True, text=True,
+        )
+        if rev_res.returncode != 0 or not rev_res.stdout.strip():
+            return []
+
+        bypasses = []
+        rf_re = re.compile(r"\bRF-\d+\b", re.IGNORECASE)
+        for sha in rev_res.stdout.strip().splitlines():
+            sha = sha.strip()
+            if not sha:
+                continue
+            files_res = subprocess.run(
+                ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", sha],
+                cwd=str(repo_root), capture_output=True, text=True,
+            )
+            changed_files = [f.strip() for f in files_res.stdout.splitlines() if f.strip()]
+            code_files = [
+                f for f in changed_files
+                if not f.lower().endswith((".md", ".txt", ".markdown"))
+                and not f.startswith((".spec-guard/", ".state-guard/"))
+            ]
+            if not code_files:
+                continue
+
+            msg_res = subprocess.run(
+                ["git", "log", "-1", "--format=%B", sha],
+                cwd=str(repo_root), capture_output=True, text=True,
+            )
+            msg = msg_res.stdout or ""
+            if change.lower() not in msg.lower() and not rf_re.search(msg):
+                bypasses.append({
+                    "commit": sha[:8],
+                    "subject": msg.splitlines()[0].strip() if msg.strip() else "",
+                    "code_files": code_files,
+                })
+        return bypasses
+    except Exception:
+        return []
+
+
 def cmd_verify_crit(args):
     """
-    Audita deterministamente la trazabilidad 1:1 de criterios CRIT-XX en tests.
-    Extrae criterios de tasks.md, design.md, objective.md y (modo raíz) de los RF
-    del scope en requirements.md, y verifica que para cada criterio automatizado
-    exista una prueba que contenga exactamente su identificador.
+    Audita deterministamente la trazabilidad 1:1 de criterios CRIT-XX en tests,
+    la integridad criptográfica de la especificación (spec_hash), posibles bypasses
+    de hooks Git (--no-verify) y opcionalmente ejecuta la suite de tests (--run-tests).
     """
-    change = args.change
-    guard_dir = _find_guard_dir(REPO_ROOT)
-    change_dir = guard_dir / "changes" / change
-    if not change_dir.exists():
-        _emit({"ok": False, "change": change, "message": f"El change '{change}' no existe."}, 1)
+    from spec_guard.core.state_manager import compute_spec_hash
 
-    audit = _audit_criteria(change, change_dir)
-    results, failures = audit["results"], audit["failures"]
-
-    if not results:
-        _emit({
-            "ok": True,
-            "change": change,
-            "criteria": [],
-            "failures": 0,
-            "message": f"No se encontraron criterios CRIT-XX en las especificaciones de '{change}'."
-        }, 0)
-
-    ok = failures == 0
-    message = (
-        f"Trazabilidad completa: {len(results)} criterios auditados, {failures} fallas."
-        if ok else
-        f"FALLÓ la verificación de trazabilidad: {failures} criterio(s) automatizados sin test demostrable."
-    )
-    _emit({
-        "ok": ok,
-        "change": change,
-        "failures": failures,
-        "criteria": results,
-        "message": message,
-    }, 0 if ok else 2)
-
-
-def cmd_session_checkpoint(args):
-    """
-    Actualiza o genera el cursor de sesión liviano (~250 tokens) SESSION.md.
-    """
     change = args.change
     guard_dir = _find_guard_dir(REPO_ROOT)
     change_dir = guard_dir / "changes" / change
@@ -390,80 +449,182 @@ def cmd_session_checkpoint(args):
         _emit({"ok": False, "change": change, "message": f"El change '{change}' no existe."}, 1)
 
     state_file = change_dir / "state.ini"
-    phase = "execute"
-    base_commit = "HEAD"
+    recorded_hash = ""
+    base_commit = ""
     if state_file.exists():
+        cfg = configparser.ConfigParser()
+        cfg.read(state_file, encoding="utf-8")
+        recorded_hash = cfg.get("Transaction", "spec_hash", fallback="").strip()
+        base_commit = cfg.get("Transaction", "base_commit", fallback="").strip()
+
+    spec_hash_valid = True
+    if recorded_hash:
+        current_hash = compute_spec_hash(REPO_ROOT, change)
+        spec_hash_valid = (current_hash == recorded_hash)
+
+    bypass_commits = _audit_git_bypasses(REPO_ROOT, change, base_commit)
+
+    run_tests = bool(getattr(args, "run_tests", False))
+    tests_passed = None
+    if run_tests:
+        test_cmd = _detect_test_command(REPO_ROOT, guard_dir)
+        if test_cmd:
+            try:
+                res = subprocess.run(
+                    test_cmd, shell=True, cwd=str(REPO_ROOT), capture_output=True, text=True
+                )
+                tests_passed = (res.returncode == 0)
+            except Exception:
+                tests_passed = False
+        else:
+            tests_passed = False
+
+    audit = _audit_criteria(change, change_dir)
+    results, failures = audit["results"], audit["failures"]
+
+    ok = (
+        failures == 0
+        and spec_hash_valid
+        and len(bypass_commits) == 0
+        and (tests_passed is not False)
+    )
+
+    if not results and ok:
+        _emit({
+            "ok": True,
+            "change": change,
+            "criteria": [],
+            "failures": 0,
+            "spec_hash_valid": spec_hash_valid,
+            "bypass_commits": bypass_commits,
+            "tests_passed": tests_passed,
+            "message": f"No se encontraron criterios CRIT-XX en las especificaciones de '{change}'.",
+        }, 0)
+
+    reasons = []
+    if failures > 0:
+        reasons.append(f"{failures} criterio(s) automatizados sin test demostrable")
+    if not spec_hash_valid:
+        reasons.append("la especificación fue modificada durante EXECUTE (spec_hash inválido)")
+    if bypass_commits:
+        reasons.append(f"{len(bypass_commits)} commit(s) de código sin referencia al change/RF (posible --no-verify)")
+    if tests_passed is False:
+        reasons.append("la ejecución de la suite de tests (--run-tests) falló")
+
+    message = (
+        f"Trazabilidad completa: {len(results)} criterios auditados, {failures} fallas."
+        if ok else
+        "FALLÓ la verificación: " + "; ".join(reasons) + "."
+    )
+    _emit({
+        "ok": ok,
+        "change": change,
+        "failures": failures,
+        "spec_hash_valid": spec_hash_valid,
+        "bypass_commits": bypass_commits,
+        "tests_passed": tests_passed,
+        "criteria": results,
+        "message": message,
+    }, 0 if ok else 2)
+
+
+def cmd_session_checkpoint(args):
+    """
+    Actualiza el cursor de sesión y verifica ancestría Git directamente en state.ini[Session].
+    """
+    from spec_guard.core.locking import with_write_lock
+    from spec_guard.core.state_manager import save_state
+
+    change = args.change
+    guard_dir = _find_guard_dir(REPO_ROOT)
+    change_dir = guard_dir / "changes" / change
+    if not change_dir.exists():
+        _emit({"ok": False, "change": change, "message": f"El change '{change}' no existe."}, 1)
+
+    state_file = change_dir / "state.ini"
+    if not state_file.exists():
+        _emit({"ok": False, "change": change, "message": f"No existe state.ini para '{change}'."}, 1)
+
+    write_lock_path = str(change_dir / ".write-lock")
+    result_holder = {}
+
+    def _do():
         cfg = configparser.ConfigParser()
         cfg.read(state_file, encoding="utf-8")
         phase = cfg.get("Graph", "lock_phase", fallback="execute")
         base_commit = cfg.get("Transaction", "base_commit", fallback="")
 
-    if not base_commit:
-        try:
-            res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), capture_output=True, text=True)
-            if res.returncode == 0:
-                base_commit = res.stdout.strip()
-        except Exception:
-            base_commit = "unknown"
+        if not base_commit:
+            try:
+                res = subprocess.run(
+                    ["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), capture_output=True, text=True
+                )
+                if res.returncode == 0 and res.stdout.strip():
+                    base_commit = res.stdout.strip()
+                    if not cfg.has_section("Transaction"):
+                        cfg.add_section("Transaction")
+                    cfg.set("Transaction", "base_commit", base_commit)
+            except Exception:
+                base_commit = "unknown"
 
-    diverged = False
-    if base_commit and base_commit != "unknown":
-        try:
-            res = subprocess.run(
-                ["git", "merge-base", "--is-ancestor", base_commit, "HEAD"],
-                cwd=str(REPO_ROOT), capture_output=True, text=True
-            )
-            if res.returncode != 0:
-                diverged = True
-        except Exception:
-            pass
+        diverged = False
+        if base_commit and base_commit != "unknown":
+            try:
+                res = subprocess.run(
+                    ["git", "merge-base", "--is-ancestor", base_commit, "HEAD"],
+                    cwd=str(REPO_ROOT), capture_output=True, text=True,
+                )
+                if res.returncode != 0:
+                    diverged = True
+            except Exception:
+                pass
 
-    now_iso = datetime.now().isoformat()
-    action = args.action or "Continuar implementación de tareas pendientes"
-    completed = args.completed or "- Hito inicial registrado"
-    working_state = args.working_state or "- Ejecutando fase actual"
-    decisions = args.decisions or "- Ninguna pendiente"
+        action = args.action or "Continuar implementación de tareas pendientes"
+        completed = args.completed or "- Hito inicial registrado"
+        working_state = args.working_state or "- Ejecutando fase actual"
+        decisions = args.decisions or "- Ninguna pendiente"
+        tests_val = args.tests or "pending"
 
-    content = (
-        f"# Session Checkpoint\n\n"
-        f"- **Plan:** {change}\n"
-        f"- **Phase:** {phase}\n"
-        f"- **Status:** in_progress\n"
-        f"- **Updated:** {now_iso}\n"
-        f"- **Base commit:** {base_commit}\n\n"
-        f"## Completed in this session\n"
-        f"{completed}\n\n"
-        f"## Current working state\n"
-        f"{working_state}\n\n"
-        f"## Next action\n"
-        f"{action}\n\n"
-        f"## Open decisions\n"
-        f"{decisions}\n\n"
-        f"## Verification\n"
-        f"- Tests: {'pending' if not args.tests else args.tests}\n"
-        f"- Divergence check: {'ALERTA: Git divergió del commit base' if diverged else 'OK (ancestro válido)'}\n"
-        f"- Human review: pending\n"
-    )
+        summary = (
+            f"phase={phase}\n"
+            f"next_action={action}\n"
+            f"completed={completed}\n"
+            f"working_state={working_state}\n"
+            f"decisions={decisions}\n"
+            f"tests={tests_val}\n"
+            f"diverged={'true' if diverged else 'false'}"
+        )
 
-    session_root = guard_dir / "SESSION.md"
-    tmp_root = guard_dir / "SESSION.md.tmp"
-    session_change = change_dir / "SESSION.md"
+        if not cfg.has_section("Session"):
+            cfg.add_section("Session")
+        cfg.set("Session", "next_action", action)
+        cfg.set("Session", "completed", completed)
+        cfg.set("Session", "working_state", working_state)
+        cfg.set("Session", "decisions", decisions)
+        cfg.set("Session", "tests", tests_val)
+        cfg.set("Session", "diverged", "true" if diverged else "false")
+        cfg.set("Session", "session_summary", summary)
+
+        save_state(cfg, str(state_file))
+        result_holder.update({
+            "phase": phase,
+            "base_commit": base_commit,
+            "diverged": diverged,
+        })
 
     try:
-        tmp_root.write_text(content, encoding="utf-8")
-        tmp_root.replace(session_root)
-        session_change.write_text(content, encoding="utf-8")
+        with_write_lock(write_lock_path, _do)
     except Exception as e:
-        _emit({"ok": False, "error": str(e), "message": "No se pudo escribir SESSION.md"}, 1)
+        _emit({"ok": False, "error": str(e), "message": "No se pudo actualizar state.ini[Session]"}, 1)
 
     _emit({
         "ok": True,
         "change": change,
-        "phase": phase,
-        "base_commit": base_commit,
-        "diverged": diverged,
-        "session_file": str(session_root),
-        "message": "SESSION.md actualizado exitosamente.",
+        "phase": result_holder["phase"],
+        "base_commit": result_holder["base_commit"],
+        "diverged": result_holder["diverged"],
+        "state_file": str(state_file),
+        "message": "Cursor de sesión actualizado en state.ini[Session].",
     })
 
 
@@ -474,7 +635,7 @@ def cmd_migrate(args):
 
 def cmd_init(args):
     """Inicializa la estructura .spec-guard/ y los contratos AGENTS.md y CLAUDE.md."""
-    target_dir = REPO_ROOT
+    target_dir = Path(args.target_dir).resolve() if getattr(args, "target_dir", None) else REPO_ROOT
     spec_dir = target_dir / ".spec-guard"
     (spec_dir / "changes").mkdir(parents=True, exist_ok=True)
     (spec_dir / "specs").mkdir(parents=True, exist_ok=True)
@@ -495,13 +656,8 @@ def cmd_init(args):
         )
 
     # AGENTS.md
-    agents_template = TEMPLATES_DIR / "AGENTS.md.template"
-    if not agents_template.exists():
-        user_tpl = Path.home() / ".agents" / "skills" / "spec-guard" / "templates" / "AGENTS.md.template"
-        if user_tpl.exists():
-            agents_template = user_tpl
-
-    if agents_template.exists():
+    agents_template = _resolve_template("AGENTS.md.template")
+    if agents_template and agents_template.exists():
         content = agents_template.read_text(encoding="utf-8")
     else:
         content = (
@@ -553,11 +709,9 @@ def cmd_init(args):
     bin_dir = spec_dir / "bin"
     verify_script = bin_dir / "verify-crit.sh"
     installed_verify = False
-    source_verify = Path(__file__).resolve().parent.parent / "scripts" / "verify-crit.sh"
-    if not source_verify.exists():
-        source_verify = Path.home() / ".agents" / "skills" / "spec-guard" / "bin" / "verify-crit.sh"
+    source_verify = _resolve_template("verify-crit.sh")
 
-    if source_verify.exists() and source_verify.resolve() != verify_script.resolve():
+    if source_verify and source_verify.exists() and source_verify.resolve() != verify_script.resolve():
         bin_dir.mkdir(parents=True, exist_ok=True)
         import shutil
         shutil.copy2(str(source_verify), str(verify_script))
@@ -892,8 +1046,6 @@ def cmd_list_changes(args):
 
 def cmd_hooks_start(args):
     daemon = Path(__file__).parent / "daemon" / "hook_daemon.py"
-    if not daemon.exists():
-        daemon = REPO_ROOT / "scripts" / "hook_daemon.py"
 
     SG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = SG_DIR / "hooks.daemon.log"
@@ -947,12 +1099,130 @@ def cmd_hooks_status(args):
 
 # ─── Instalación de git hooks ─────────────────────────────────────────────────
 
+PRE_COMMIT_HOOK_TEMPLATE = """\
+#!/usr/bin/env python3
+# SpecGuard git hook: pre-commit
+# Installed by: sg install-hooks
+import configparser
+import subprocess
+import sys
+from pathlib import Path
+
+repo_root = Path(__file__).resolve().parent.parent.parent
+guard_dir = repo_root / ".spec-guard" if (repo_root / ".spec-guard").exists() else repo_root / ".state-guard"
+changes_dir = guard_dir / "changes"
+
+if not changes_dir.exists():
+    sys.exit(0)
+
+plan_changes = []
+for entry in sorted(changes_dir.iterdir()):
+    if entry.is_dir() and entry.name != "archive":
+        state_file = entry / "state.ini"
+        if state_file.exists():
+            cfg = configparser.ConfigParser()
+            cfg.read(state_file, encoding="utf-8")
+            if cfg.get("Graph", "lock_phase", fallback="") == "plan":
+                plan_changes.append(entry.name)
+
+if not plan_changes:
+    sys.exit(0)
+
+res = subprocess.run(
+    ["git", "diff", "--cached", "--name-only"],
+    cwd=str(repo_root), capture_output=True, text=True,
+)
+staged_files = [f.strip() for f in res.stdout.splitlines() if f.strip()]
+blocked_files = [
+    f for f in staged_files
+    if not f.lower().endswith((".md", ".txt", ".markdown"))
+    and not f.startswith((".spec-guard/", ".state-guard/"))
+]
+
+if blocked_files:
+    sys.stderr.write(
+        f"SpecGuard [pre-commit]: BLOCKED — Active change(s) {plan_changes} in 'plan' phase. "
+        f"Code files cannot be committed until plan is approved: {blocked_files}\\n"
+    )
+    sys.exit(1)
+
+sys.exit(0)
+"""
+
+COMMIT_MSG_HOOK_TEMPLATE = """\
+#!/usr/bin/env python3
+# SpecGuard git hook: commit-msg
+# Installed by: sg install-hooks
+import configparser
+import re
+import sys
+from pathlib import Path
+
+if len(sys.argv) < 2:
+    sys.exit(0)
+
+msg_file = Path(sys.argv[1])
+if not msg_file.exists():
+    sys.exit(0)
+
+raw_lines = [
+    line for line in msg_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+    if not line.strip().startswith("#")
+]
+full_msg = "\\n".join(raw_lines).strip()
+if not full_msg:
+    sys.exit(0)
+
+subject = raw_lines[0].strip()
+if subject.startswith(("Merge ", "Revert ")):
+    sys.exit(0)
+
+conv_re = re.compile(
+    r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-zA-Z0-9_./-]+\\))?!?: .+"
+)
+if not conv_re.match(subject):
+    sys.stderr.write(
+        "SpecGuard [commit-msg]: BLOCKED — Commit message must follow Conventional Commits "
+        "(e.g., 'feat(scope): description').\\n"
+    )
+    sys.exit(1)
+
+repo_root = Path(__file__).resolve().parent.parent.parent
+guard_dir = repo_root / ".spec-guard" if (repo_root / ".spec-guard").exists() else repo_root / ".state-guard"
+changes_dir = guard_dir / "changes"
+
+if changes_dir.exists():
+    execute_changes = []
+    for entry in sorted(changes_dir.iterdir()):
+        if entry.is_dir() and entry.name != "archive":
+            state_file = entry / "state.ini"
+            if state_file.exists():
+                cfg = configparser.ConfigParser()
+                cfg.read(state_file, encoding="utf-8")
+                if cfg.get("Graph", "lock_phase", fallback="") == "execute":
+                    execute_changes.append(entry.name)
+
+    if execute_changes:
+        rf_re = re.compile(r"\\bRF-\\d+\\b", re.IGNORECASE)
+        has_token = bool(rf_re.search(full_msg)) or any(
+            ch.lower() in full_msg.lower() for ch in execute_changes
+        )
+        if not has_token:
+            sys.stderr.write(
+                f"SpecGuard [commit-msg]: BLOCKED — Active change(s) {execute_changes} in 'execute' phase. "
+                "Commit message must reference the change name or an RF-XXX identifier.\\n"
+            )
+            sys.exit(1)
+
+sys.exit(0)
+"""
+
 HOOK_TEMPLATE = """\
 #!/bin/sh
 # SpecGuard git hook: {hook_name}
 # Instalado por: sg install-hooks
 
-SG_BIN="$(dirname "$0")/../../scripts/sg.py"
+SG_BIN="$(dirname "$0")/../../spec_guard/cli.py"
 if [ ! -f "$SG_BIN" ]; then
     SG_BIN="sg"
 fi
@@ -988,11 +1258,14 @@ def cmd_install_hooks(args):
     hooks_dir.mkdir(exist_ok=True)
 
     installed = []
-    hook_defs = [("post-commit", "status")]
+    hook_payloads = [
+        ("pre-commit", PRE_COMMIT_HOOK_TEMPLATE),
+        ("commit-msg", COMMIT_MSG_HOOK_TEMPLATE),
+        ("post-commit", HOOK_TEMPLATE.format(hook_name="post-commit", hook_action="status")),
+    ]
 
-    for hook_name, hook_action in hook_defs:
+    for hook_name, content in hook_payloads:
         hook_path = hooks_dir / hook_name
-        content = HOOK_TEMPLATE.format(hook_name=hook_name, hook_action=hook_action)
         if hook_path.exists() and not args.force:
             _emit({
                 "ok": False,
@@ -1006,7 +1279,7 @@ def cmd_install_hooks(args):
     _emit({
         "ok": True,
         "installed_hooks": installed,
-        "message": "Hooks instalados.",
+        "message": "Hooks instalados (pre-commit, commit-msg, post-commit).",
     })
 
 
@@ -1255,6 +1528,8 @@ def build_parser():
     # init (repositorio)
     p = sub.add_parser("init", help="Inicializa la estructura .spec-guard/ y los contratos en el repositorio")
     p.add_argument("--force", action="store_true", help="Sobreescribe AGENTS.md en lugar de actualizar por bloques")
+    p.add_argument("-d", "--target-dir", dest="target_dir", default=None,
+                   help="Directorio destino a inicializar (por defecto el repositorio actual)")
 
     # status
     p = sub.add_parser("status", help="Estado actual del change")
@@ -1330,9 +1605,11 @@ def build_parser():
     # verify-crit
     p = sub.add_parser("verify-crit", help="Audita deterministamente la trazabilidad 1:1 de criterios CRIT-XX en tests")
     p.add_argument("--change", required=True)
+    p.add_argument("--run-tests", action="store_true", dest="run_tests",
+                   help="Ejecuta la suite de tests del proyecto además de la auditoría estática")
 
     # session-checkpoint
-    p = sub.add_parser("session-checkpoint", help="Actualiza o inicializa el cursor de sesión liviano SESSION.md")
+    p = sub.add_parser("session-checkpoint", help="Actualiza el cursor de sesión y verifica ancestría Git en state.ini[Session]")
     p.add_argument("--change", required=True)
     p.add_argument("--action", default=None, help="Próxima acción inmediata atómica")
     p.add_argument("--completed", default=None, help="Bullets de hitos completados")

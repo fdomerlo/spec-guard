@@ -1,5 +1,3 @@
-
-
 <!-- BEGIN SPECGUARD -->
 # Contributor & Executor Contract (SpecGuard SDD)
 
@@ -23,16 +21,16 @@ Every change follows a strict phase DAG: `PLAN` -> `EXECUTE` -> `VERIFY`.
 - **Legacy mode:** changes with `objective.md` keep delta specs in `.spec-guard/changes/{change-name}/specs/`.
 - Explicitly define **Fuera del Alcance (Out of Scope)** to prevent scope creep.
 - Break down deliverables into numbered acceptance criteria: `CRIT-01`, `CRIT-02`, etc., classified as `[automated]` or `[manual]`.
-- Human review gate: Human must approve the plan out-of-band with `sg plan-approve` + `sg plan-confirm`. Never attempt to bypass this gate.
+- Human review gate: Human must approve the plan (in chat mode via `--approval-text` or in strict mode out-of-band with `sg plan-approve` + `sg plan-confirm`). Never attempt to bypass this gate.
 
-### 2. EXECUTE Phase & Session Checkpoint
-- Work with a lightweight **SESSION.md** cursor (~250 tokens) at `.spec-guard/SESSION.md` to keep token consumption minimal during implementation.
+### 2. EXECUTE Phase & Transactional Session Cursor
+- Operate with the transactional cursor in `state.ini[Session]` via `sg status --change {change-name}` to keep token consumption minimal during implementation.
 - Maintain test-driven discipline (RED -> GREEN -> REFACTOR).
 - Criteria traceability (`CRIT-XX`): Every automated criterion MUST map to a test named after that criterion (e.g., `def test_crit_01_...()` or `test("CRIT-01: ...")`).
-- Run `sg session-checkpoint --change {change-name} --action "..."` to record execution progress atomically with git ancestry verification.
+- Run `sg session-checkpoint --change {change-name} --action "..."` to record execution progress atomically in `state.ini[Session]` with git ancestry verification.
 
 ### 3. VERIFY Phase
-- Mandatory deterministic gate: `sg verify-crit --change {change-name}` (or `.spec-guard/bin/verify-crit.sh {change-name}`).
-- If any automated criterion lacks a matching test, the gate exits with code 2 and the verdict is REJECTED.
-- On approval, the change is archived to `.spec-guard/changes/archive/YYYY-MM-DD-{change-name}/` and `.spec-guard/SESSION.md` is cleaned up.
+- Mandatory deterministic gate: `sg verify-crit --change {change-name} [--run-tests]` (or `.spec-guard/bin/verify-crit.sh {change-name}`).
+- If any automated criterion lacks a matching test, if `spec_hash` was tampered with, or if `--no-verify` bypass commits are detected, the gate exits with code 2 and the verdict is REJECTED.
+- On approval, the change is archived to `.spec-guard/changes/archive/YYYY-MM-DD-{change-name}/`.
 <!-- END SPECGUARD -->

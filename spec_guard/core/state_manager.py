@@ -8,6 +8,7 @@ El lock de plan solo se emite tras aprobación humana explícita out-of-band.
 """
 import argparse
 import configparser
+import hashlib
 import json
 import os
 import re
@@ -15,6 +16,10 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+_PKG_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _PKG_ROOT not in sys.path:
+    sys.path.insert(0, _PKG_ROOT)
 
 from spec_guard.core import root_docs
 from spec_guard.core.locking import (
@@ -39,6 +44,7 @@ __all__ = [
     "cmd_verify_gate",
     "cmd_next_task",
     "cmd_validate_spec",
+    "compute_spec_hash",
     "get_gate_mode",
     "is_v1_state",
     "_migrate_v1_to_v2",
@@ -279,6 +285,35 @@ def _migrate_v1_to_v2(config: configparser.ConfigParser, path: str):
 
 # ─── Comandos ───────────────────────────────────────────────────────────────
 
+def compute_spec_hash(base_dir: Path, change_name: str) -> str:
+    """Computes a deterministic SHA-256 digest of the change's specification files."""
+    base_path = Path(base_dir) if base_dir else Path.cwd()
+    change_dir = base_path / ".spec-guard" / "changes" / change_name
+    if not change_dir.exists():
+        change_dir = resolve_change_dir(change_name)
+
+    hasher = hashlib.sha256()
+    if root_docs.spec_mode(change_dir) == "root":
+        root_dir = root_docs.find_root_dir(change_dir)
+        spec_files = [
+            ("requirements.md", root_dir / "requirements.md"),
+            ("design.md", root_dir / "design.md"),
+        ]
+    else:
+        spec_files = [
+            ("objective.md", change_dir / "objective.md"),
+            ("design.md", change_dir / "design.md"),
+        ]
+
+    for label, fpath in spec_files:
+        hasher.update(label.encode("utf-8") + b"\0")
+        if fpath.exists():
+            hasher.update(fpath.read_bytes())
+        hasher.update(b"\0")
+
+    return hasher.hexdigest()
+
+
 def cmd_begin(args):
     lock_path = LOCK_FILE.format(change=args.change)
 
@@ -316,6 +351,12 @@ def cmd_begin(args):
                 config.set("Transaction", "base_commit", res.stdout.strip())
         except (OSError, subprocess.SubprocessError):
             pass
+
+        if args.phase == "execute":
+            repo_root = Path(path).resolve().parent.parent.parent
+            spec_hash = compute_spec_hash(repo_root, args.change)
+            config.set("Transaction", "spec_hash", spec_hash)
+
         save_state(config, path)
         print(f"SUCCESS|BEGIN transaccional iniciado para fase: {args.phase}")
 
@@ -587,8 +628,11 @@ def cmd_status(args):
     txn_status = config.get("Transaction", "txn_status", fallback="idle")
     txn_phase = config.get("Transaction", "txn_phase", fallback="None")
     started_at = config.get("Transaction", "txn_started_at", fallback=None)
+    base_commit = config.get("Transaction", "base_commit", fallback="")
+    spec_hash = config.get("Transaction", "spec_hash", fallback="")
     lock_phase = config.get("Graph", "lock_phase", fallback="None")
     schema_version = config.get("Metadata", "schema_version", fallback="1")
+    session_data = dict(config.items("Session")) if config.has_section("Session") else {}
 
     lock_path = LOCK_FILE.format(change=args.change)
     lock_state = check_lock_status(lock_path, started_at, args.ttl)
@@ -600,6 +644,9 @@ def cmd_status(args):
             "lock_phase": lock_phase,
             "lock_state": lock_state,
             "schema_version": schema_version,
+            "base_commit": base_commit,
+            "spec_hash": spec_hash,
+            "session": session_data,
         }))
     else:
         print(f"txn_status={txn_status}")
