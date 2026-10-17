@@ -26,10 +26,10 @@ graph TD
         GATE{"Compuerta Humana<br/>gate.mode: chat | strict"}
     end
 
-    subgraph "3. FASE EXECUTE (Cursor de Bajo Consumo)"
-        SESSION[".spec-guard/SESSION.md (~250 tokens)<br/>Validación de ancestría Git: merge-base"]
+    subgraph "3. FASE EXECUTE (Cursor Transaccional en state.ini)"
+        SESSION["state.ini[Session] + sg status<br/>Validación de ancestría Git: merge-base"]
         TDD["Ciclo TDD (RED -> GREEN -> REFACTOR)<br/>Tests atados a CRIT-&lt;rf&gt;-&lt;n&gt;"]
-        CHECKPOINT["sg session-checkpoint<br/>Actualización atómica en disco"]
+        CHECKPOINT["sg session-checkpoint<br/>Actualización atómica en state.ini"]
     end
 
     subgraph "4. FASE VERIFY (Puerta Determinista)"
@@ -37,7 +37,7 @@ graph TD
         GLOSSARY_AUDIT["sg glossary-check<br/>Auditoría de sinónimos prohibidos"]
         MARK_RF["sg mark-rf<br/>Cierre determinista de RF-XXX cubiertos"]
         CLEAN_GIT["Git Working Tree Limpio<br/>Commit previo obligatorio"]
-        ARCHIVE["Auto-Archivado del Cambio<br/>Consolidación en archive/ y purga de SESSION.md"]
+        ARCHIVE["Auto-Archivado del Cambio<br/>Consolidación en archive/"]
     end
 
     AGENTS --> READ_FIRST
@@ -68,8 +68,8 @@ El agente nunca asume requerimientos ambiguos ni escribe código prematuramente:
 ### 4. Trazabilidad Determinista de Criterios (`CRIT-XX`) y Cierre de RFs (`sg mark-rf`)
 Todo requerimiento funcional desglosa criterios `CRIT-<rf>-<n>` (`[automated]` o `[manual]`). El comando `sg verify-crit` audita con boundary exacto (`\b`) que cada criterio automatizable cuente con su test correspondiente (`test_crit_101_1_...`). Durante la fase `verify`, `sg mark-rf` es el único mecanismo autorizado para marcar el RF como completado (`[x]`) una vez verificados todos sus criterios.
 
-### 5. Cursor de Sesión de Bajo Consumo (`.spec-guard/SESSION.md`)
-Para evitar consumir miles de tokens releyendo especificaciones extensas en cada prompt durante la implementación, SpecGuard genera un cursor volátil `.spec-guard/SESSION.md` (~250 tokens), fuera de la raíz del proyecto. Incluye validación de ancestría Git (`git merge-base --is-ancestor`) para alertar al instante si el repositorio sufrió rebases o desincronizaciones tras una compactación de contexto.
+### 5. Cursor Transaccional de Bajo Consumo (`state.ini[Session]`)
+Para evitar consumir miles de tokens releyendo especificaciones extensas en cada prompt durante la implementación, SpecGuard consolida el cursor de sesión directamente en `state.ini[Session]` (consultable en JSON vía `sg status --change <c>`). Incluye validación de ancestría Git (`git merge-base --is-ancestor`) para alertar al instante si el repositorio sufrió rebases o desincronizaciones tras una compactación de contexto.
 
 ### 6. Modos de Compuerta Humana Configurables (`chat` vs `strict`)
 El agente **nunca puede auto-aprobarse** para comenzar a modificar código fuente:
@@ -102,7 +102,13 @@ SpecGuard se manifiesta según la necesidad de tu entorno (100% Python Standard 
 Ejecuta el script de instalación desde la raíz del repositorio:
 
 ```bash
-bash scripts/install.sh
+bash install.sh
+```
+
+Para desinstalar SpecGuard del sistema:
+
+```bash
+bash install.sh --uninstall
 ```
 
 El instalador:
@@ -177,7 +183,7 @@ sg begin --change agregar-autenticacion --phase execute
 # o en chat:
 /continue
 ```
-- Se genera `.spec-guard/SESSION.md` (~250 tokens), registrando el `base_commit` de Git y el cursor de trabajo.
+- Se registra en `state.ini` el `base_commit` de Git, el hash criptográfico SHA-256 de la especificación (`spec_hash`) y el cursor de trabajo en `[Session]`.
 - El agente aplica el ciclo **TDD**: escribe las pruebas nombradas según el criterio (`test_crit_101_1_login_exitoso`) antes de escribir la implementación.
 - Cada avance actualiza el checkpoint atómicamente:
   ```bash
@@ -194,12 +200,15 @@ sg begin --change agregar-autenticacion --phase verify
 # o en chat:
 /continue
 ```
-1. **Auditoría de Criterios**: Se corre `sg verify-crit --change agregar-autenticacion` (o `.spec-guard/bin/verify-crit.sh`). Si algún `CRIT-<rf>-<n> [automated]` no cuenta con tests en el código fuente, la fase se interrumpe con error.
+1. **Auditoría de Criterios, Integridad e Historial**: Se corre `sg verify-crit --change agregar-autenticacion [--run-tests]` (o `.spec-guard/bin/verify-crit.sh`). Verifica:
+   - Trazabilidad 1:1 de cada `CRIT-<rf>-<n> [automated]` en tests.
+   - Integridad criptográfica (`spec_hash`) para garantizar que la especificación no fue adulterada durante `EXECUTE`.
+   - Auditoría anti-bypass (`--no-verify`) en `git log <base_commit>..HEAD` y ejecución opcional del runner de tests (`--run-tests`).
 2. **Auditoría de Glosario**: `sg glossary-check` audita que el diff no contenga sinónimos prohibidos definidos en `requirements.md`.
 3. **Cierre de Requerimiento Funcional**: `sg mark-rf --change agregar-autenticacion --rf RF-101` valida la cobertura total de criterios y marca el checkbox `### [x] RF-101: ...` en `requirements.md`.
 4. **Suite de Pruebas y Build**: Se ejecutan los comandos de test y build del proyecto.
 5. **Commit de Git**: El árbol de trabajo debe confirmarse limpiamente en Git (`git commit`).
-6. **Archivado Automático**: Se consolida el cambio en `.spec-guard/changes/archive/YYYY-MM-DD-agregar-autenticacion/`, se actualiza el histórico y se purga `.spec-guard/SESSION.md`.
+6. **Archivado Automático**: Se consolida el cambio en `.spec-guard/changes/archive/YYYY-MM-DD-agregar-autenticacion/` y se actualiza el histórico.
 
 ---
 
@@ -214,25 +223,25 @@ sg begin --change agregar-autenticacion --phase verify
 | `sg rf-status [--change <c>]` | Muestra el estado de los RFs de `requirements.md` (totales, pendientes, completados) | Agente / Humano |
 | `sg mark-rf --change <c> --rf <id>` | Marca un RF como completado (`[x]`) tras verificar cobertura total de criterios | Agente |
 | `sg glossary-check [--change <c>] [--paths <p...>] [--strict]` | Audita el diff o rutas contra la tabla de términos permitidos y sinónimos prohibidos | Agente / Humano |
-| `sg begin --change <c> --phase <p>` | Inicia una transacción ACID para la fase (`plan`, `execute`, `verify`, `hotfix`) | Agente |
+| `sg begin --change <c> --phase <p>` | Inicia una transacción ACID para la fase (`plan`, `execute`, `verify`, `hotfix`) y sella `spec_hash` en `execute` | Agente |
 | `sg commit --change <c> --next-phase <p> [--approval-text <t>]` | Confirma la fase actual y avanza el DAG transaccional | Agente |
 | `sg rollback --change <c>` | Revierte la transacción activa a estado `idle` | Agente / Humano |
 | `sg checkpoint --change <c> --summary <s>` | Guarda un resumen en `state.ini[Session]` (límite 2000 caracteres) | Agente |
-| `sg session-checkpoint --change <c> [--action <a>]` | Genera o actualiza el cursor volátil `.spec-guard/SESSION.md` validando ancestría Git | Agente |
+| `sg session-checkpoint --change <c> [--action <a>]` | Actualiza el cursor de sesión en `state.ini[Session]` validando ancestría Git | Agente |
 | `sg status --change <c>` | Muestra el estado del grafo transaccional del cambio indicado | Humano / Agente |
 | `sg list-changes` | Lista todos los cambios activos con su `lock_phase`, `txn_status` y `schema_version` | Humano / Agente |
 | `sg mark-task --change <c> --task-id <id>` | Marca una tarea individual como completada en `tasks.md` (modo legacy) | Agente |
 | `sg next-task --change <c>` | Muestra la siguiente tarea pendiente de implementación (modo legacy) | Agente |
 | `sg check-completion --change <c>` | Valida si todas las tareas del cambio han sido completadas | Agente |
 | `sg validate-spec --change <c>` | Verifica integridad estructural y presencia obligatoria de *Out of Scope* | Agente / Humano |
-| `sg verify-crit --change <c>` | Audita trazabilidad 1:1 de criterios `CRIT-XX` contra suites de test | Agente / Humano |
+| `sg verify-crit --change <c> [--run-tests]` | Audita trazabilidad 1:1 de criterios `CRIT-XX`, integridad `spec_hash`, bypass Git y tests (`--run-tests`) | Agente / Humano |
 | `sg verify-gate --change <c> --phase <p>` | Verifica si el cambio cumple los requisitos para ejecutar la fase solicitada | Agente |
 | `sg plan-approve --change <c>` | Emite token de aprobación fuera de banda en `/dev/tty` (modo `strict`) | **Solo Humano** |
 | `sg plan-confirm --change <c> --token <t>` | Valida el token y aprueba el plan (modo `strict`) | **Solo Humano** |
 | `sg hotfix-init --change <c> --reason <r>` | Solicita bypass auditado de hotfix fuera de banda | **Solo Humano** |
 | `sg hotfix-confirm --change <c> --token <t>` | Consume token y desbloquea inicio directo en `execute` | **Solo Humano** |
 | `sg migrate --change <c>` | Migra un `state.ini` de esquema v1 (8 fases) a v2 (3 fases) | Humano / Agente |
-| `sg install-hooks [--force]` | Instala hooks de Git en el repositorio | Humano |
+| `sg install-hooks [--force]` | Instala hooks bloqueantes de Git (`pre-commit`, `commit-msg`, `post-commit`) | Humano |
 | `sg hooks-start` / `status` / `stop` | Administra el observador en background de reglas derivadas | Humano |
 
 ---

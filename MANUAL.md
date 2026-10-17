@@ -2,81 +2,32 @@
 
 Este manual cubre la arquitectura técnica, configuración y flujos avanzados del sistema **SpecGuard v3.0.0**, el motor de Specification-Driven Development (SDD) y persistencia transaccional para agentes de código. SpecGuard soporta nativamente la estructura `.spec-guard/` a la vez que mantiene compatibilidad hacia atrás completa con proyectos que utilicen `.state-guard/`.
 
-## Arquitectura Memory Guard
+## Arquitectura Unificada Single-Skill
 
-### Contrato Unificado
+### Contrato Unificado (`AGENTS.md` + `SKILL.md`)
 
-El Memory Guard es el contrato central que el agente carga al iniciar una sesión. En lugar de un orquestador que despacha comandos CLI a sub-agentes, el agente ejecuta fases directamente (inline) protegido por un protocolo de persistencia transaccional.
+SpecGuard opera mediante un contrato SDD auto-contenido (`AGENTS.md` y `SKILL.md` en la raíz del repositorio) gobernado por el motor CLI `sg`:
 
 ```
-Memory Guard (memory-guard.md)
+Contrato SDD (AGENTS.md / SKILL.md)
     │
-    ├── Carga transaction-protocol.md → Protocolo BEGIN/COMMIT/ROLLBACK
-    ├── Carga capabilities.md         → Detecta capacidades del host
-    ├── Carga persistence-contract.md → Resuelve el modo de persistencia
-    ├── Carga convention.md           → Prepara rutas y schema
+    ├── Read-First Ignition (sg context + sg status)
     │
-    ├── Ejecuta inline → plan     (intake → draft → gate humano obligatorio → lock)
-    ├── Ejecuta inline → execute  (tasks.md + SESSION.md + TDD; delega si > 10 tareas y host soporta)
-    └── Ejecuta inline → verify   (verify-crit + glossary-check + mark-rf + tests + archive)
+    ├── Ejecuta → plan     (Doubt-Driven Spec Intake → validate-spec → gate humano → commit)
+    ├── Ejecuta → execute  (begin [sella spec_hash] → TDD → session-checkpoint en state.ini[Session])
+    └── Ejecuta → verify   (verify-crit [--run-tests] → glossary-check → mark-rf → archive)
 ```
 
-### Módulos del Memory Guard
+### Componentes del Sistema
 
-Los contratos compartidos se distribuyen en dos directorios:
-
-**`skills/_shared/`** — Contratos globales del agente:
-
-| Archivo | Propósito |
+| Componente | Propósito |
 |---------|-----------|
-| `memory-guard.md` | Contrato unificado: identidad del agente, ejecución de fases, delegación inteligente, recovery |
-| `capabilities.md` | Detección de capacidades del agente host y regla de delegación inteligente |
-| `convention.md` | Convención de filesystem, schema state.ini v2, tabla de transiciones de lock_phase |
-
-**`phases/_shared/`** — Contratos específicos de fases:
-
-| Archivo | Propósito |
-|---------|-----------|
-| `transaction-protocol.md` | Protocolo de transacciones: ciclo BEGIN/COMMIT/ROLLBACK, campos txn_* en state.ini, auto-checkpoint |
-| `phase-common.md` | Protocolo de transacción común a todas las fases |
-| `persistence-contract.md` | Contrato de persistencia: inline vs delegada, protocolo de comunicación |
-| `context-injection.md` | Dependencias de contexto por fase y secuencia de ejecución |
-| `test-runner-detection.md` | Pseudocódigo para la detección automática del test runner del proyecto |
-| `spec-intake.md` | Protocolo Doubt-Driven Intake (entrevista guiada por la duda y redacción de RF-XXX) |
-| `definition-of-done.md` | Barra condensada de calidad y completitud para revisión en VERIFY |
-| `security-checklist.md` | Checklist condensado de seguridad (entradas, auth, secrets y OWASP) para VERIFY |
-
-### Autodetección y Delegación Inteligente
-
-El agente determina su comportamiento en tiempo de ejecución analizando las reglas de `capabilities.md`. Detecta dinámicamente el host (por ejemplo, verificando la presencia de `.gemini` o `.config/opencode/`) y activa o desactiva capacidades según la plataforma.
-
-El Memory Guard ejecuta fases **inline por defecto**: carga el archivo `.md` correspondiente a la fase (ej. `phases/execute.md`) y sigue sus instrucciones como propias. Delega el trabajo pesado a un sub-agente real bajo estas condiciones:
-
-1. La fase es `execute` con más de 10 tareas pendientes en `tasks.md`, **Y**
-2. El agente host detectado soporta sub-agentes reales (OpenCode o Antigravity CLI).
-
-En la ejecución delegada, el sub-agente ejecuta las tareas e interactúa con el disco, pero **nunca** escribe en `state.ini`. El Memory Guard asume exclusivamente la responsabilidad del COMMIT transaccional al finalizar la delegación.
-
-### Skill Registry Dinámico
-
-El sistema incluye un **registry dinámico de skills** que permite el descubrimiento automático de herramientas:
-
-- Script bash POSIX en `skills/skill-registry/scan.sh`
-- Índice generado en `.spec-guard/skill-registry.md`
-- El Memory Guard lee este índice al iniciar para conocer las herramientas disponibles
-
-El registry escanea los directorios global (`$HOME/.skills-custom`) y local (`./skills-custom`), extrayendo nombre, descripción, trigger y ubicación de cada `SKILL.md`.
-
----
-
-## Compilación Condicional vs Runtime
-
-### Compilación Estática (Target OpenCode)
-Los modelos de entrada tienden a sufrir de "pereza de herramientas" y les cuesta inferir que deben leer el contexto dinámicamente si no se les inyecta explícitamente en el *system prompt*.
-Además, el empaquetador reescribe dinámicamente las directivas de los *slash commands* para usar lenguaje imperativo, forzando al modelo a realizar el *tool-calling* esperado.
-
-### Context Streaming (Targets Avanzados)
-Para modelos de frontera como Antigravity CLI y OpenCode, el empaquetador evita el inlining pesado. Despliega un *system prompt* minimalista conservando la filosofía de **Lazy Loading** (Context Streaming). El agente carga dinámicamente las habilidades compartidas y específicas bajo demanda, respetando las referencias modulares limpias para mantener la ventana de contexto sumamente ligera.
+| `SKILL.md` | Skill canónica auto-contenida en la raíz: ciclo DAG (`PLAN -> EXECUTE -> VERIFY`), *Doubt-Driven Spec Intake*, *Definition of Done* y *Security Checklist* |
+| `install.sh` | Instalador y desinstalador (`--uninstall`) universal en la raíz del repositorio |
+| `spec_guard/templates/` | Plantillas para inicialización de proyectos (`AGENTS.md.template`, `requirements.md.template`, `design.md.template`, `verify-crit.sh`) |
+| `spec_guard/core/state_manager.py` | Máquina de estados ACID sobre `state.ini` con locks POSIX (`fcntl.flock`), `spec_hash` SHA-256 y cursor `[Session]` |
+| `spec_guard/core/root_docs.py` | Parser del *2-File Root Protocol* (`requirements.md` y `design.md`), `RF-XXX`, `CRIT-XX` y Glosario Estricto |
+| `spec_guard/cli.py` | Interfaz CLI (`sg`) con salida JSON determinista, auditoría `verify-crit` e instalación de hooks Git bloqueantes |
 
 ---
 
@@ -171,7 +122,7 @@ El Memory Guard detecta cambios concurrentes mediante:
 
 ## Capa `sg` (`spec_guard.cli`) — CLI, Gate Humano y Hotfix
 
-`sg` (`spec_guard/cli.py`, con shim en `scripts/sg.py`) es el único punto de entrada CLI de alto nivel para la interacción con SpecGuard. Actúa como un wrapper seguro que encapsula las llamadas a `state_manager.py`, formateando la salida en JSON estándar y administrando los mecanismos de autorización humana.
+`sg` (`spec_guard/cli.py`) es el único punto de entrada CLI de alto nivel para la interacción con SpecGuard. Actúa como un wrapper seguro que encapsula las llamadas a `state_manager.py`, formateando la salida en JSON estándar y administrando los mecanismos de autorización humana.
 
 ### Arquitectura de `sg`
 
@@ -202,9 +153,10 @@ En situaciones de emergencia donde un error debe ser corregido sin pasar por la 
 
 ### Integración de Hooks de Git (`sg install-hooks`)
 
-El comando `sg install-hooks` instala un hook `post-commit` en el repositorio Git.
-- **Función**: Ejecuta automáticamente `sg status` después de cada commit de git para mostrar el estado actual del manifiesto.
-- **Comportamiento**: Es estrictamente **informativo** y no bloquea las operaciones de git, a diferencia del gate de `commit` que sí es bloqueante.
+El comando `sg install-hooks` instala tres hooks en `.git/hooks/`:
+- **`pre-commit` (Bloqueante)**: Impide commitear archivos de código mientras exista un cambio activo en `lock_phase = plan` (permitiendo únicamente `.md`, `.txt`, `.markdown` y `.spec-guard/`).
+- **`commit-msg` (Bloqueante)**: Exige formato Conventional Commits y, durante `lock_phase = execute`, obliga a que el mensaje referencie el `<change>` activo o un identificador `RF-XXX`.
+- **`post-commit` (Informativo)**: Ejecuta `sg status` tras cada commit para mostrar el estado actual del manifiesto.
 
 ### Subcomandos Principales de `sg`
 
@@ -213,7 +165,7 @@ El comando `sg install-hooks` instala un hook `post-commit` en el repositorio Gi
 - **Auditoría de Glosario (`sg glossary-check`)**: Contrasta el diff de Git o rutas específicas contra la tabla de términos permitidos y sinónimos prohibidos de `requirements.md §2`.
 - **Trazabilidad de Criterios (`sg verify-crit`)**: Extrae determinísticamente los criterios `CRIT-XX` de `requirements.md` (RFs en scope) o `tasks.md`/`design.md`/`objective.md` y comprueba en `tests/`, `test/`, `spec/`, `src/` que cada criterio `[automated]` cuente con un test asociado. Retorna exit code 0 si todos están cubiertos, o código 2 (bloqueante) si hay criterios huérfanos.
 - **Cierre Determinista de RFs (`sg mark-rf`)**: Durante la fase `verify`, valida que todos los criterios automatizados del RF estén cubiertos por tests y marca `### [x] RF-XXX` en `requirements.md`.
-- **Cursor de Sesión Volátil (`sg session-checkpoint`)**: Genera o actualiza atómicamente `.spec-guard/SESSION.md` (~250 tokens) y valida la ancestría Git (`git merge-base --is-ancestor <base-commit> HEAD`).
+- **Cursor de Sesión Transaccional (`sg session-checkpoint`)**: Actualiza atómicamente `state.ini[Session]` y valida la ancestría Git (`git merge-base --is-ancestor <base-commit> HEAD`).
 - **Bootstrap Universal (`sg init`)**: Inicializa `requirements.md`, `design.md`, `AGENTS.md`, `CLAUDE.md` y `.spec-guard/` (incluyendo `.spec-guard/bin/verify-crit.sh`).
 - **Gestión de Agent Hooks**: `sg hooks-start`, `sg hooks-stop` y `sg hooks-status` permiten iniciar, detener y verificar el estado del daemon de observabilidad de filesystem.
 
@@ -266,23 +218,31 @@ rules:
     - Criterios CRIT-XX automatizables deben contar con tests
 ```
 
-### Scripts de Mantenimiento y Desarrollo
+### Instalación y Desinstalación Universal
 
-El directorio `scripts/` incluye herramientas adicionales de soporte:
-- `cleanup.sh`: Desinstala skills, symlinks y limpia las inyecciones de configuración de SpecGuard en los diferentes agentes de IA (`~/.agents/skills/spec-guard`, `~/.gemini/GEMINI.md`, `opencode.jsonc`).
+El script raíz `install.sh` administra la instalación y desinstalación del sistema:
+- `bash install.sh`: Instala el paquete `spec_guard`, la skill canónica `SKILL.md`, los enlaces simbólicos (`sg`, `spec-guard`, `sg-verify-crit`, `sg-init`) y las integraciones de orquestadores.
+- `bash install.sh --uninstall`: Desinstala skills, symlinks y limpia las inyecciones de configuración de SpecGuard en los diferentes agentes de IA (`~/.agents/skills/spec-guard`, `~/.gemini/GEMINI.md`, `opencode.jsonc`).
 - `tests/install_test.sh`: Suite de tests de integración para validar el correcto funcionamiento del script de instalación.
 
-### Parámetro build_command / test_command
+### Parámetro build_command / test_command y Compuertas Físicas
 
 Define el comando para ejecutar pruebas o build durante la fase de verificación:
 
 ```yaml
+project:
+  test_command: "pytest"  # o "npm test", "cargo test", etc.
 rules:
   verify:
-    build_command: "pytest"  # o "npm test", "cargo test", etc.
+    build_command: "pytest"
 ```
 
-Si no se define, la verificación autodetectará el test runner según `phases/_shared/test-runner-detection.md`.
+Si no se define, `sg verify-crit --change <nombre> --run-tests` autodetectará el test runner del proyecto (`tests/run_tests.py`, `pytest`, `npm test`, `cargo test`, `go test ./...`).
+
+Además, **SpecGuard** incorpora tres compuertas determinísticas de integridad física:
+1. **Hooks Git Bloqueantes (`sg install-hooks`)**: Instala `.git/hooks/pre-commit` (bloquea commits de archivos de código mientras un cambio esté en `lock_phase = plan`) y `.git/hooks/commit-msg` (exige formato Conventional Commits y referencia al `<change>` o `RF-XXX` durante `execute`).
+2. **Inmutabilidad de Especificación (`spec_hash`)**: Al ejecutar `sg begin --phase execute`, se registra el hash SHA-256 (`spec_hash`) de las especificaciones en `state.ini`. Si los requisitos o el diseño se alteran durante la implementación sin reabrir `plan`, `sg verify-crit` rechaza la verificación (código `2`).
+3. **Auditoría Anti-Bypass (`--no-verify`) y `--run-tests`**: `sg verify-crit` inspecciona `git log <base_commit>..HEAD` para detectar commits de código que hayan omitido la referencia al cambio/RF y permite ejecutar la suite de tests real con `--run-tests`.
 
 ---
 
@@ -357,7 +317,7 @@ El archivado de un cambio ocurre automáticamente dentro de la fase `verify`, un
 1. Ejecutar la fase `verify` (`/continue` con `lock_phase=verify`).
 2. Antes de que `verify` pueda archivar, el árbol de trabajo git debe estar limpio — todos los cambios de código commiteados (`git add . && git commit -m "..."`).
 
-En el **2-File Root Protocol**, el archivado cierra cada RF cubierto ejecutando `sg mark-rf`, archiva y purga `.spec-guard/SESSION.md`, y mueve el directorio del cambio a `.spec-guard/changes/archive/YYYY-MM-DD-{nombre}/`. En modo legacy, fusiona las specs delta (`changes/{nombre}/specs/`) en `.spec-guard/specs/`.
+En el **2-File Root Protocol**, el archivado cierra cada RF cubierto ejecutando `sg mark-rf` y mueve el directorio del cambio a `.spec-guard/changes/archive/YYYY-MM-DD-{nombre}/`. En modo legacy, fusiona las specs delta (`changes/{nombre}/specs/`) en `.spec-guard/specs/`.
 
 ### /review — Auditoría Estática
 
@@ -411,10 +371,8 @@ Este comando **elimina permanentemente** todo el trabajo no commiteado en el dir
 ├── CLAUDE.md                      ← Puntero @AGENTS.md
 └── .spec-guard/
     ├── config.yaml                ← Configuración del proyecto (gate.mode, glossary, rules)
-    ├── SESSION.md                 ← Cursor volátil de bajo consumo (~250 tokens, durante EXECUTE)
     ├── bin/
     │   └── verify-crit.sh         ← Script local de auditoría determinista CRIT-XX
-    ├── skill-registry.md          ← Índice dinámico de custom skills (opcional)
     ├── specs/                     ← Specs actuales (modo legacy)
     │   └── {dominio}/
     │       └── spec.md
@@ -429,7 +387,6 @@ Este comando **elimina permanentemente** todo el trabajo no commiteado en el dir
             ├── design.md          ← Diseño técnico del cambio (modo legacy)
             ├── specs/             ← Specs delta (modo legacy)
             ├── tasks.md           ← Checklist de tareas con trazabilidad CRIT-XX
-            ├── SESSION.md         ← Copia histórica del cursor de sesión
             └── verify-report.md   ← Reporte de verificación
 ```
 
@@ -478,7 +435,7 @@ SpecGuard soporta múltiples agentes de IA. El Memory Guard se adapta automátic
 | OpenCode | ✅ | ✅ | Execute pesados (> 10 tareas) |
 | Antigravity | ✅ | ✅ | Execute pesados (> 10 tareas) |
 
-Ejecuta `bash scripts/install.sh` para instalar de forma universal el CLI `sg`, las skills nativas y los contratos de arranque.
+Ejecuta `bash install.sh` para instalar de forma universal el CLI `sg`, la skill nativa y los contratos de arranque (o `bash install.sh --uninstall` para desinstalar).
 
 ---
 
